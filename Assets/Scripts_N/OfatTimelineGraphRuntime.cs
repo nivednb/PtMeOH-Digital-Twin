@@ -26,6 +26,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     public enum Variable { Free = 0, Temperature = 1, Pressure = 2, H2CO2 = 3, GHSV = 4, FeedFlow = 5 }
     public enum Response { Yield = 0, Efficiency = 1, Methanol = 2 }
     public enum ViewMode { Line = 0, Points = 1 }
+    public enum ExperimentMode { Interactive = 0, AutoSweep = 1 }
 
     private const float SampleInterval = 0.5f;
     private const float PageSeconds = 60f;
@@ -46,6 +47,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     private struct Sample { public float T; public float Y; public Variable Var; public float VarValue; }
     private struct Epoch { public float T; public Variable Var; public float VarValue; }
     private struct ChangePoint { public float T; public float Y; public string Module; public string Parameter; public float From; public float To; }
+    private struct SweepPoint { public float X; public float Y; }
 
     private static readonly Dictionary<Variable, VarMeta> Vars = new Dictionary<Variable, VarMeta>
     {
@@ -77,11 +79,20 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     private Variable currentVar = Variable.Free;
     private Response currentResp = Response.Yield;
     private ViewMode currentMode = ViewMode.Points;
+    private ExperimentMode currentExperimentMode = ExperimentMode.Interactive;
     private bool subTabVisible;
 
     private readonly List<Sample> samples = new List<Sample>();
     private readonly List<Epoch> epochs = new List<Epoch>();
     private readonly List<ChangePoint> changePoints = new List<ChangePoint>();
+    private readonly List<SweepPoint> sweepPoints = new List<SweepPoint>();
+    private PlantProcessSimulator.ProcessInputs sweepBaselineInputs;
+    private float sweepBaselineX;
+    private float sweepBaselineY;
+    private float sweepMin;
+    private float sweepMax;
+    private bool hasSweepBaseline;
+    private bool sweepNeedsRefresh;
 
     private float clock;
     private float nextSampleTime;
@@ -108,6 +119,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     private Image[] varDots;
     private Button[] respButtons;
     private Button[] modeButtons;
+    private Button[] experimentModeButtons;
     private Button prevPageButton;
     private Button nextPageButton;
     private Button liveButton;
@@ -143,18 +155,19 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         selfRect = root;
         gameObject.AddComponent<UIRaycastTarget>();
 
+        BuildExperimentModeRow(root);
         BuildVariableRow(root);
         BuildResponseRow(root);
 
         titleText = UITheme.Label("Title", root, "", 15f, W.ExtraBold, UITheme.Ink);
-        UITheme.TopBand(titleText.rectTransform, 0f, 84f, LegendWidth + 20f, 20f);
+        UITheme.TopBand(titleText.rectTransform, 0f, 124f, LegendWidth + 20f, 20f);
         contextText = UITheme.Label("Context", root, "", 12.5f, W.Medium, UITheme.Subtle);
-        UITheme.TopBand(contextText.rectTransform, 0f, 106f, LegendWidth + 20f, 18f);
+        UITheme.TopBand(contextText.rectTransform, 0f, 146f, LegendWidth + 20f, 18f);
 
         GameObject plotObject = new GameObject("Plot Area", typeof(RectTransform));
         plotArea = plotObject.GetComponent<RectTransform>();
         plotArea.SetParent(root, false);
-        UITheme.Fill(plotArea, 70f, 138f, LegendWidth + 28f, 64f);
+        UITheme.Fill(plotArea, 70f, 178f, LegendWidth + 28f, 64f);
 
         UIGraphKit.PlotBackground(plotArea);
         UIGraphKit.HorizontalGrid(plotArea, TickCount - 1);
@@ -181,11 +194,42 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         RecolorVarButtons();
         RecolorRespButtons();
         RecolorModeButtons();
+        RecolorExperimentModeButtons();
         UpdateContext();
         dirty = true;
     }
 
     // ---- control rows -------------------------------------------------------
+
+    private void BuildExperimentModeRow(RectTransform root)
+    {
+        RectTransform row = UITheme.NewRect("OFAT Mode Row", root);
+        UITheme.TopBand(row, 0f, 80f, 0f, 32f);
+        Text lbl = UITheme.Label("Mode Label", row, "OFAT mode", 12.5f, W.ExtraBold, UITheme.Subtle);
+        UITheme.TopLeft(lbl.rectTransform, 0f, 0f, 76f, 32f);
+
+        Image segment = UITheme.Panel("Experiment Mode", row, UITheme.Sunken, 16f, true);
+        string[] names = { "Interactive", "Auto sweep" };
+        experimentModeButtons = new Button[names.Length];
+        float x = 3f;
+        for (int i = 0; i < names.Length; i++)
+        {
+            int idx = i;
+            Button b = UITheme.MakeButton("Experiment Mode " + i, segment.transform, names[i], Kind.Segment,
+                12.5f, null, 13f, false, 16f, W.ExtraBold, 12f);
+            float w = UITheme.PreferredWidth(b);
+            UITheme.TopLeft((RectTransform)b.transform, x, 3f, w, 26f);
+            x += w + 2f;
+            b.onClick.AddListener(() => SetExperimentMode((ExperimentMode)idx));
+            experimentModeButtons[i] = b;
+        }
+        UITheme.TopLeft(segment.rectTransform, 82f, 0f, x + 1f, 32f);
+
+        Text note = UITheme.Label("Mode Note", row,
+            "Auto sweep snapshots the current operating point and recalculates one factor at a time.",
+            11.5f, W.Medium, UITheme.Muted);
+        UITheme.TopLeft(note.rectTransform, 300f, 5f, 610f, 22f);
+    }
 
     private void BuildVariableRow(RectTransform root)
     {
@@ -225,7 +269,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     private void BuildResponseRow(RectTransform root)
     {
         RectTransform row = UITheme.NewRect("Response Row", root);
-        UITheme.TopBand(row, 0f, 40f, 0f, 32f);
+        UITheme.TopBand(row, 0f, 80f, 0f, 32f);
         Text lbl = UITheme.Label("Show Label", row, "Show", 12.5f, W.ExtraBold, UITheme.Subtle);
         UITheme.TopLeft(lbl.rectTransform, 0f, 0f, 70f, 32f);
 
@@ -294,18 +338,74 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     {
         // The variable chips carry the line colours; the right column explains the points.
         RectTransform legend = UIGraphKit.ModuleLegend(root, "Colour = module changed", false, LegendWidth);
-        UITheme.TopRight(legend, 0f, 138f, LegendWidth, legend.sizeDelta.y);
+        UITheme.TopRight(legend, 0f, 178f, LegendWidth, legend.sizeDelta.y);
         moduleLegend = legend.gameObject;
     }
 
     // ---- state changes ----------------------------------------------------
 
+    private void SetExperimentMode(ExperimentMode mode)
+    {
+        if (mode == currentExperimentMode)
+        {
+            if (mode == ExperimentMode.AutoSweep)
+            {
+                sweepNeedsRefresh = true;
+                GenerateAutomaticSweep();
+            }
+            return;
+        }
+
+        currentExperimentMode = mode;
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            if (currentVar == Variable.Free) currentVar = Variable.Temperature;
+            sweepNeedsRefresh = true;
+            GenerateAutomaticSweep();
+        }
+        else
+        {
+            sweepPoints.Clear();
+            hasSweepBaseline = false;
+            epochs.Add(new Epoch { T = clock, Var = currentVar, VarValue = ReadVarValue(currentVar, PlantProcessSimulator.Instance) });
+            if (epochs.Count > MaxRecords) epochs.RemoveAt(0);
+        }
+
+        ApplyLock();
+        RecolorExperimentModeButtons();
+        RecolorVarButtons();
+        RecolorModeButtons();
+        UpdateContext();
+        dirty = true;
+    }
+
     private void SetVariable(Variable v)
     {
-        if (v == currentVar) return;
+        if (currentExperimentMode == ExperimentMode.AutoSweep && v == Variable.Free)
+            v = Variable.Temperature;
+
+        if (v == currentVar)
+        {
+            if (currentExperimentMode == ExperimentMode.AutoSweep)
+            {
+                sweepNeedsRefresh = true;
+                GenerateAutomaticSweep();
+            }
+            return;
+        }
+
         currentVar = v;
-        epochs.Add(new Epoch { T = clock, Var = v, VarValue = ReadVarValue(v, PlantProcessSimulator.Instance) });
-        if (epochs.Count > MaxRecords) epochs.RemoveAt(0);
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            sweepNeedsRefresh = true;
+            GenerateAutomaticSweep();
+        }
+        else
+        {
+            epochs.Add(new Epoch { T = clock, Var = v, VarValue = ReadVarValue(v, PlantProcessSimulator.Instance) });
+            if (epochs.Count > MaxRecords) epochs.RemoveAt(0);
+        }
+
         ApplyLock();
         RecolorVarButtons();
         UpdateContext();
@@ -316,9 +416,103 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     {
         if (r == currentResp) return;
         currentResp = r;
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            sweepNeedsRefresh = true;
+            GenerateAutomaticSweep();
+        }
         RecolorRespButtons();
         UpdateContext();
         dirty = true;
+    }
+
+    /// <summary>
+    /// Generates a model-based OFAT curve from the actual current operating inputs.
+    /// The live plant is never stepped through the sweep: CurrentInputs is copied, exactly
+    /// one selected input is changed for each point, and the same pure
+    /// PlantProcessSimulator.Simulate() calculation used by the application evaluates it.
+    /// This keeps recycle/mass-balance/process logic identical to the running model while
+    /// leaving live sliders, storage, animation and timeline state untouched.
+    /// </summary>
+    private void GenerateAutomaticSweep()
+    {
+        sweepPoints.Clear();
+        PlantProcessSimulator sim = PlantProcessSimulator.Instance;
+        if (sim == null || currentVar == Variable.Free || responses == null)
+        {
+            hasSweepBaseline = false;
+            sweepNeedsRefresh = false;
+            return;
+        }
+
+        if (!GetSweepRange(currentVar, out sweepMin, out sweepMax))
+        {
+            hasSweepBaseline = false;
+            sweepNeedsRefresh = false;
+            return;
+        }
+
+        sweepBaselineInputs = sim.CurrentInputs;
+        sweepBaselineX = ReadInputValue(sweepBaselineInputs, currentVar);
+
+        PlantProcessSimulator.ProcessSnapshot baselineResult = sim.Simulate(sweepBaselineInputs);
+        sweepBaselineY = responses[(int)currentResp].Select(baselineResult);
+        hasSweepBaseline = true;
+
+        const int intervals = 12; // 13 calculated model points, including both range limits.
+        for (int i = 0; i <= intervals; i++)
+        {
+            float x = Mathf.Lerp(sweepMin, sweepMax, i / (float)intervals);
+            PlantProcessSimulator.ProcessInputs hypothetical = sweepBaselineInputs;
+            SetInputValue(ref hypothetical, currentVar, x);
+            PlantProcessSimulator.ProcessSnapshot result = sim.Simulate(hypothetical);
+            sweepPoints.Add(new SweepPoint
+            {
+                X = x,
+                Y = responses[(int)currentResp].Select(result)
+            });
+        }
+
+        sweepNeedsRefresh = false;
+        dirty = true;
+    }
+
+    private static bool GetSweepRange(Variable v, out float min, out float max)
+    {
+        switch (v)
+        {
+            case Variable.Temperature: min = 180f; max = 300f; return true;
+            case Variable.Pressure:    min = 40f;  max = 100f; return true;
+            case Variable.H2CO2:       min = 1f;   max = 6f; return true;
+            case Variable.GHSV:        min = 1000f; max = 20000f; return true;
+            case Variable.FeedFlow:    min = 20f;  max = 130f; return true;
+            default:                   min = 0f;    max = 0f; return false;
+        }
+    }
+
+    private static float ReadInputValue(PlantProcessSimulator.ProcessInputs input, Variable v)
+    {
+        return v switch
+        {
+            Variable.Temperature => input.temperature,
+            Variable.Pressure => input.pressure,
+            Variable.H2CO2 => input.ratio,
+            Variable.GHSV => input.ghsv,
+            Variable.FeedFlow => input.reactorFeedFlow,
+            _ => 0f
+        };
+    }
+
+    private static void SetInputValue(ref PlantProcessSimulator.ProcessInputs input, Variable v, float value)
+    {
+        switch (v)
+        {
+            case Variable.Temperature: input.temperature = value; break;
+            case Variable.Pressure: input.pressure = value; break;
+            case Variable.H2CO2: input.ratio = value; break;
+            case Variable.GHSV: input.ghsv = value; break;
+            case Variable.FeedFlow: input.reactorFeedFlow = value; break;
+        }
     }
 
     private void SetMode(ViewMode m)
@@ -341,7 +535,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     {
         if (panels == null) panels = FindFirstObjectByType<InteractiveModulePanelRuntime>();
         if (panels == null) return;
-        if (subTabVisible && currentVar != Variable.Free)
+        if (subTabVisible && currentExperimentMode == ExperimentMode.Interactive && currentVar != Variable.Free)
             panels.SetReactorVariableLock(Vars[currentVar].SliderParam);
         else
             panels.ClearReactorVariableLock();
@@ -394,8 +588,11 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         nextSampleTime = 0f;
         pageIndex = 0;
         followLive = true;
-        currentVar = Variable.Free;
+        currentVar = currentExperimentMode == ExperimentMode.AutoSweep ? Variable.Temperature : Variable.Free;
         epochs.Add(new Epoch { T = 0f, Var = currentVar, VarValue = 0f });
+        sweepPoints.Clear();
+        hasSweepBaseline = false;
+        sweepNeedsRefresh = currentExperimentMode == ExperimentMode.AutoSweep;
         ApplyLock();
         RecolorVarButtons();
         UpdateContext();
@@ -406,6 +603,16 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     {
         PlantProcessSimulator sim = PlantProcessSimulator.Instance;
         if (sim == null) return;
+
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            // A committed live control change means the next automatic curve must use a fresh
+            // baseline from the real current operating inputs.
+            sweepNeedsRefresh = true;
+            dirty = true;
+            return;
+        }
+
         changePoints.Add(new ChangePoint
         {
             T = clock,
@@ -438,23 +645,31 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         }
 
         bool running = sim != null && sim.IsRunning;
-        if (running) clock += Time.unscaledDeltaTime;
 
-        if (running && clock >= nextSampleTime)
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
         {
-            nextSampleTime = clock + SampleInterval;
-            samples.Add(new Sample
-            {
-                T = clock,
-                Y = responses[(int)currentResp].Select(sim.Current),
-                Var = currentVar,
-                VarValue = ReadVarValue(currentVar, sim),
-            });
-            if (samples.Count > MaxRecords) samples.RemoveAt(0);
-            dirty = true;
+            if (sweepNeedsRefresh) GenerateAutomaticSweep();
         }
+        else
+        {
+            if (running) clock += Time.unscaledDeltaTime;
 
-        if (followLive) pageIndex = LatestPage;
+            if (running && clock >= nextSampleTime)
+            {
+                nextSampleTime = clock + SampleInterval;
+                samples.Add(new Sample
+                {
+                    T = clock,
+                    Y = responses[(int)currentResp].Select(sim.Current),
+                    Var = currentVar,
+                    VarValue = ReadVarValue(currentVar, sim),
+                });
+                if (samples.Count > MaxRecords) samples.RemoveAt(0);
+                dirty = true;
+            }
+
+            if (followLive) pageIndex = LatestPage;
+        }
 
         if (dirty || Time.unscaledTime >= nextRebuild)
         {
@@ -473,6 +688,13 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         for (int i = pointsLayer.childCount - 1; i >= 0; i--) Destroy(pointsLayer.GetChild(i).gameObject);
         for (int i = epochLayer.childCount - 1; i >= 0; i--) Destroy(epochLayer.GetChild(i).gameObject);
 
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            RebuildAutomaticSweep();
+            return;
+        }
+
+        SetInteractiveControlsVisible(true);
         RespMeta rm = responses[(int)currentResp];
         int latest = LatestPage;
         pageIndex = Mathf.Clamp(pageIndex, 0, latest);
@@ -582,6 +804,93 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         liveButton.Skin()?.SetActive(followLive);
     }
 
+    private void RebuildAutomaticSweep()
+    {
+        SetInteractiveControlsVisible(false);
+        for (int i = 0; i < linePool.Count; i++) linePool[i].ClearPoints();
+
+        RespMeta rm = responses[(int)currentResp];
+        if (sweepPoints.Count == 0 || currentVar == Variable.Free)
+        {
+            titleText.text = "Model sensitivity (OFAT)";
+            contextText.text = "No sweep is available. Select a parameter to recalculate the current model.";
+            pageLabel.text = "AUTO SWEEP";
+            if (moduleLegend != null) moduleLegend.SetActive(false);
+            return;
+        }
+
+        Rect r = plotArea.rect;
+        float dataMax = 0f;
+        for (int i = 0; i < sweepPoints.Count; i++) dataMax = Mathf.Max(dataMax, sweepPoints[i].Y);
+        viewYMax = Mathf.Clamp(dataMax * 1.15f, Mathf.Max(1f, rm.Max * 0.2f), Mathf.Max(rm.Max, dataMax * 1.15f));
+
+        segBuffer.Clear();
+        for (int i = 0; i < sweepPoints.Count; i++)
+        {
+            SweepPoint point = sweepPoints[i];
+            segBuffer.Add(new Vector2(
+                r.xMin + Mathf.InverseLerp(sweepMin, sweepMax, point.X) * r.width,
+                MapY(point.Y, r)));
+        }
+
+        if (segBuffer.Count >= 2)
+        {
+            UIGraphLine line = GetPoolLine(0);
+            line.color = Vars[currentVar].Color;
+            line.SetPoints(segBuffer);
+        }
+
+        for (int i = 0; i < sweepPoints.Count; i++)
+        {
+            SweepPoint point = sweepPoints[i];
+            RectTransform dot = UITheme.NewRect("Sweep Point", pointsLayer);
+            dot.anchorMin = dot.anchorMax = new Vector2(0.5f, 0.5f);
+            dot.pivot = new Vector2(0.5f, 0.5f);
+            dot.sizeDelta = new Vector2(9f, 9f);
+            dot.anchoredPosition = segBuffer[i];
+            Image fill = UITheme.Dot("Fill", dot, 9f, Vars[currentVar].Color);
+            UITheme.Center(fill.rectTransform, 9f, 9f);
+        }
+
+        if (hasSweepBaseline)
+        {
+            RectTransform currentDot = UITheme.NewRect("Current Operating Point", pointsLayer);
+            currentDot.anchorMin = currentDot.anchorMax = new Vector2(0.5f, 0.5f);
+            currentDot.pivot = new Vector2(0.5f, 0.5f);
+            currentDot.sizeDelta = new Vector2(15f, 15f);
+            currentDot.anchoredPosition = new Vector2(
+                r.xMin + Mathf.InverseLerp(sweepMin, sweepMax, sweepBaselineX) * r.width,
+                MapY(sweepBaselineY, r));
+            Image ring = UITheme.Dot("Current Ring", currentDot, 15f, Color.white);
+            UITheme.Center(ring.rectTransform, 15f, 15f);
+            Image core = UITheme.Dot("Current Core", currentDot, 9f, UITheme.Ink);
+            UITheme.Center(core.rectTransform, 9f, 9f);
+        }
+
+        string unit = VarUnit(currentVar);
+        titleText.text = $"Model sensitivity (OFAT) — {rm.Label.ToLowerInvariant()} vs {Vars[currentVar].Label}";
+        contextText.text =
+            $"13 points recalculated with PlantProcessSimulator.Simulate(). Only {Vars[currentVar].Label} changes; every other input is held at the current operating point.";
+        pageLabel.text = $"AUTO SWEEP  ·  current baseline {GraphVisualUtils.FormatValue(sweepBaselineX, unit)}";
+        xTicks[0].text = GraphVisualUtils.FormatValue(sweepMin, unit);
+        xTicks[1].text = GraphVisualUtils.FormatValue((sweepMin + sweepMax) * 0.5f, unit);
+        xTicks[2].text = GraphVisualUtils.FormatValue(sweepMax, unit);
+        for (int i = 0; i < TickCount; i++)
+            yTicks[i].text = FormatNum(viewYMax * i / (TickCount - 1));
+        yAxisNameLabel.text = $"{rm.Label} ({rm.Unit})";
+        if (moduleLegend != null) moduleLegend.SetActive(false);
+    }
+
+    private void SetInteractiveControlsVisible(bool visible)
+    {
+        if (prevPageButton != null) prevPageButton.gameObject.SetActive(visible);
+        if (nextPageButton != null) nextPageButton.gameObject.SetActive(visible);
+        if (liveButton != null) liveButton.gameObject.SetActive(visible);
+        if (modeButtons != null)
+            for (int i = 0; i < modeButtons.Length; i++)
+                if (modeButtons[i] != null) modeButtons[i].interactable = visible;
+    }
+
     private void FlushRun(ref int poolUsed, Variable v)
     {
         if (segBuffer.Count < 2) return;
@@ -616,6 +925,12 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
 
     public void OnPointerMove(PointerEventData eventData)
     {
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            HandleAutomaticSweepHover(eventData);
+            return;
+        }
+
         if (plotArea == null || samples.Count == 0)
         {
             HideTooltip();
@@ -688,6 +1003,57 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         tooltip.Show(text, tl);
     }
 
+    private void HandleAutomaticSweepHover(PointerEventData eventData)
+    {
+        if (plotArea == null || sweepPoints.Count == 0)
+        {
+            HideTooltip();
+            return;
+        }
+
+        Camera cam = ownerCanvas != null && ownerCanvas.renderMode != RenderMode.ScreenSpaceOverlay ? ownerCanvas.worldCamera : null;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(plotArea, eventData.position, cam, out Vector2 local))
+        {
+            HideTooltip();
+            return;
+        }
+
+        Rect r = plotArea.rect;
+        if (local.x < r.xMin || local.x > r.xMax || local.y < r.yMin - 8f || local.y > r.yMax + 8f)
+        {
+            HideTooltip();
+            return;
+        }
+
+        float xValue = Mathf.Lerp(sweepMin, sweepMax, Mathf.InverseLerp(r.xMin, r.xMax, local.x));
+        int nearest = 0;
+        float best = float.MaxValue;
+        for (int i = 0; i < sweepPoints.Count; i++)
+        {
+            float d = Mathf.Abs(sweepPoints[i].X - xValue);
+            if (d < best) { best = d; nearest = i; }
+        }
+
+        SweepPoint p = sweepPoints[nearest];
+        RespMeta rm = responses[(int)currentResp];
+        string unit = VarUnit(currentVar);
+        string text =
+            $"<b>{Vars[currentVar].Label}: {GraphVisualUtils.FormatValue(p.X, unit)}</b>\n" +
+            $"{rm.Label}: {GraphVisualUtils.FormatValue(p.Y, rm.Unit)}\n" +
+            "<color=#94A3B8>Calculated from the current operating baseline; all other inputs held constant.</color>";
+
+        if (hoverDot != null)
+        {
+            hoverDot.anchoredPosition = new Vector2(
+                r.xMin + Mathf.InverseLerp(sweepMin, sweepMax, p.X) * r.width,
+                MapY(p.Y, r));
+            hoverDot.gameObject.SetActive(true);
+            hoverDot.SetAsLastSibling();
+        }
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(selfRect, eventData.position, cam, out Vector2 tl);
+        tooltip.Show(text, tl);
+    }
+
     public void OnPointerExit(PointerEventData eventData) => HideTooltip();
 
     private void HideTooltip()
@@ -700,41 +1066,99 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
 
     private void ExportNow()
     {
+        RespMeta rm = responses[(int)currentResp];
+        string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            if (sweepPoints.Count == 0 || !hasSweepBaseline)
+            {
+                GraphExportUtil.ShowToast(ownerCanvas, labelFont, "Auto sweep: no calculated points yet.");
+                return;
+            }
+
+            string baseName = GraphExportUtil.Sanitize($"OFAT_auto_{Vars[currentVar].Label}_{rm.Label}_{stamp}");
+            string unit = VarUnit(currentVar);
+            var sb = new StringBuilder();
+            sb.AppendLine($"# Model sensitivity (OFAT) — {rm.Label} vs {Vars[currentVar].Label}");
+            sb.AppendLine($"# exported,{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine("# calculation_source,PlantProcessSimulator.Simulate(ProcessInputs)");
+            sb.AppendLine("# method,Current operating inputs snapshot; exactly one factor varied; live plant state not mutated");
+            sb.AppendLine($"# varied_parameter,{Vars[currentVar].Label}");
+            sb.AppendLine($"# range,{sweepMin:0.####},{sweepMax:0.####},{unit}");
+            sb.AppendLine("# points,13");
+            sb.AppendLine($"# baseline_{Vars[currentVar].Label},{sweepBaselineX:0.####},{unit}");
+            sb.AppendLine($"# baseline_response,{sweepBaselineY:0.####},{rm.Unit}");
+            sb.AppendLine($"# held_timeline_percent,{sweepBaselineInputs.timeline:0.####}");
+            sb.AppendLine($"# held_electrolyzer_power_percent,{sweepBaselineInputs.electrolyzerPower:0.####}");
+            sb.AppendLine($"# held_water_feed_percent,{sweepBaselineInputs.waterFeed:0.####}");
+            sb.AppendLine($"# held_flue_gas_flow_percent,{sweepBaselineInputs.flueGasFlow:0.####}");
+            sb.AppendLine($"# held_amine_flow_percent,{sweepBaselineInputs.amineFlow:0.####}");
+            sb.AppendLine($"# held_regenerator_steam_percent,{sweepBaselineInputs.regeneratorSteam:0.####}");
+            sb.AppendLine($"# held_regenerator_temperature_C,{sweepBaselineInputs.regenTemp:0.####}");
+            sb.AppendLine($"# held_compression_ratio,{sweepBaselineInputs.compressionRatio:0.####}");
+            sb.AppendLine($"# held_temperature_C,{sweepBaselineInputs.temperature:0.####}");
+            sb.AppendLine($"# held_pressure_bar,{sweepBaselineInputs.pressure:0.####}");
+            sb.AppendLine($"# held_H2_CO2_ratio,{sweepBaselineInputs.ratio:0.####}");
+            sb.AppendLine($"# held_GHSV_per_h,{sweepBaselineInputs.ghsv:0.####}");
+            sb.AppendLine($"# held_reactor_feed_percent,{sweepBaselineInputs.reactorFeedFlow:0.####}");
+            sb.AppendLine($"# held_cooling_water_flow_percent,{sweepBaselineInputs.coolingWaterFlow:0.####}");
+            sb.AppendLine($"# held_cooling_water_temperature_C,{sweepBaselineInputs.coolingWaterTemperature:0.####}");
+            sb.AppendLine($"# held_separator_temperature_C,{sweepBaselineInputs.separatorTemperature:0.####}");
+            sb.AppendLine($"# held_recycle_percent,{sweepBaselineInputs.recycleRatio:0.####}");
+            sb.AppendLine($"# held_reflux_ratio,{sweepBaselineInputs.refluxRatio:0.####}");
+            sb.AppendLine($"# held_distillation_reboiler_temperature_C,{sweepBaselineInputs.distillationReboilerTemp:0.####}");
+            sb.AppendLine("#");
+            sb.AppendLine($"{GraphExportUtil.Csv(Vars[currentVar].Label)} ({unit}),{GraphExportUtil.Csv(rm.Label)} ({rm.Unit})");
+            foreach (SweepPoint p in sweepPoints)
+                sb.AppendLine($"{p.X:0.####},{p.Y:0.####}");
+
+            string csvPath = GraphExportUtil.WriteText(baseName, "csv", sb.ToString());
+            StartCoroutine(GraphExportUtil.CaptureRegionPng(ownerCanvas, selfRect, baseName, pngPath =>
+            {
+                string msg = pngPath != null
+                    ? $"Exported {baseName}.csv + .png to {GraphExportUtil.ExportDirectory}"
+                    : (csvPath != null
+                        ? $"Exported {baseName}.csv (PNG failed) to {GraphExportUtil.ExportDirectory}"
+                        : "Export failed — see console.");
+                GraphExportUtil.ShowToast(ownerCanvas, labelFont, msg);
+            }, exportButton != null ? exportButton.gameObject : null));
+            return;
+        }
+
         if (samples.Count == 0 && changePoints.Count == 0)
         {
             GraphExportUtil.ShowToast(ownerCanvas, labelFont, "OFAT timeline: nothing recorded yet.");
             return;
         }
-        RespMeta rm = responses[(int)currentResp];
-        string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        string baseName = GraphExportUtil.Sanitize($"OFAT_timeline_{rm.Label}_{stamp}");
 
-        var sb = new StringBuilder();
-        sb.AppendLine($"# OFAT timeline — {rm.Label} over time");
-        sb.AppendLine($"# exported,{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        sb.AppendLine($"# response,{rm.Label} ({rm.Unit})");
-        sb.AppendLine($"# sample_interval_s,{SampleInterval}");
-        sb.AppendLine($"# page_seconds,{PageSeconds}");
-        sb.AppendLine("#");
-        sb.AppendLine("# [variable epochs] time_s,active_variable,variable_value,variable_unit");
+        string timelineName = GraphExportUtil.Sanitize($"OFAT_timeline_{rm.Label}_{stamp}");
+        var timelineCsv = new StringBuilder();
+        timelineCsv.AppendLine($"# OFAT timeline — {rm.Label} over time");
+        timelineCsv.AppendLine($"# exported,{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        timelineCsv.AppendLine($"# response,{rm.Label} ({rm.Unit})");
+        timelineCsv.AppendLine($"# sample_interval_s,{SampleInterval}");
+        timelineCsv.AppendLine($"# page_seconds,{PageSeconds}");
+        timelineCsv.AppendLine("#");
+        timelineCsv.AppendLine("# [variable epochs] time_s,active_variable,variable_value,variable_unit");
         foreach (Epoch e in epochs)
-            sb.AppendLine($"E,{e.T.ToString("0.##")},{Vars[e.Var].Label},{(e.Var == Variable.Free ? "" : e.VarValue.ToString("0.####"))},{VarUnit(e.Var)}");
-        sb.AppendLine("#");
-        sb.AppendLine($"# [samples] time_s,{rm.Label} ({rm.Unit}),active_variable,variable_value,variable_unit");
+            timelineCsv.AppendLine($"E,{e.T.ToString("0.##")},{Vars[e.Var].Label},{(e.Var == Variable.Free ? "" : e.VarValue.ToString("0.####"))},{VarUnit(e.Var)}");
+        timelineCsv.AppendLine("#");
+        timelineCsv.AppendLine($"# [samples] time_s,{rm.Label} ({rm.Unit}),active_variable,variable_value,variable_unit");
         foreach (Sample s in samples)
-            sb.AppendLine($"S,{s.T.ToString("0.##")},{s.Y.ToString("0.####")},{Vars[s.Var].Label},{(s.Var == Variable.Free ? "" : s.VarValue.ToString("0.####"))},{VarUnit(s.Var)}");
-        sb.AppendLine("#");
-        sb.AppendLine("# [module change points] time_s,value,module,parameter,from,to,unit");
-        foreach (ChangePoint c in changePoints)
-            sb.AppendLine($"C,{c.T.ToString("0.##")},{c.Y.ToString("0.####")},{GraphExportUtil.Csv(c.Module)},{GraphExportUtil.Csv(c.Parameter)},{c.From.ToString("0.###")},{c.To.ToString("0.###")},{GraphVisualUtils.GetParameterUnit(c.Parameter)}");
+            timelineCsv.AppendLine($"S,{s.T.ToString("0.##")},{s.Y.ToString("0.####")},{Vars[s.Var].Label},{(s.Var == Variable.Free ? "" : s.VarValue.ToString("0.####"))},{VarUnit(s.Var)}");
+        timelineCsv.AppendLine("#");
+        timelineCsv.AppendLine("# [module change points] time_s,value,module,parameter,from,to,unit");
+        foreach (ChangePoint cp in changePoints)
+            timelineCsv.AppendLine($"C,{cp.T.ToString("0.##")},{cp.Y.ToString("0.####")},{GraphExportUtil.Csv(cp.Module)},{GraphExportUtil.Csv(cp.Parameter)},{cp.From.ToString("0.###")},{cp.To.ToString("0.###")},{GraphVisualUtils.GetParameterUnit(cp.Parameter)}");
 
-        string csvPath = GraphExportUtil.WriteText(baseName, "csv", sb.ToString());
-        StartCoroutine(GraphExportUtil.CaptureRegionPng(ownerCanvas, selfRect, baseName, pngPath =>
+        string timelinePath = GraphExportUtil.WriteText(timelineName, "csv", timelineCsv.ToString());
+        StartCoroutine(GraphExportUtil.CaptureRegionPng(ownerCanvas, selfRect, timelineName, pngPath =>
         {
             string msg = pngPath != null
-                ? $"Exported {baseName}.csv + .png to {GraphExportUtil.ExportDirectory}"
-                : (csvPath != null
-                    ? $"Exported {baseName}.csv (PNG failed) to {GraphExportUtil.ExportDirectory}"
+                ? $"Exported {timelineName}.csv + .png to {GraphExportUtil.ExportDirectory}"
+                : (timelinePath != null
+                    ? $"Exported {timelineName}.csv (PNG failed) to {GraphExportUtil.ExportDirectory}"
                     : "Export failed — see console.");
             GraphExportUtil.ShowToast(ownerCanvas, labelFont, msg);
         }, exportButton != null ? exportButton.gameObject : null));
@@ -744,7 +1168,19 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
 
     private void UpdateContext()
     {
-        RespMeta rm = responses != null ? responses[(int)currentResp] : default;
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            if (currentVar == Variable.Free)
+            {
+                contextText.text = "Select a reactor parameter to calculate a model sensitivity sweep.";
+                return;
+            }
+
+            contextText.text =
+                $"Auto sweep: vary {Vars[currentVar].Label} only. The curve is recalculated from the current live operating inputs using the same process model; the live plant is not changed.";
+            return;
+        }
+
         string varLine = currentVar == Variable.Free
             ? "No variable selected — all reactor sliders are free. Pick one to start a controlled run."
             : $"Varying {Vars[currentVar].Label} only — the other four reactor sliders are locked.";
@@ -772,6 +1208,13 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     {
         for (int i = 0; i < modeButtons.Length; i++)
             modeButtons[i].Skin()?.SetActive((int)currentMode == i);
+    }
+
+    private void RecolorExperimentModeButtons()
+    {
+        if (experimentModeButtons == null) return;
+        for (int i = 0; i < experimentModeButtons.Length; i++)
+            experimentModeButtons[i].Skin()?.SetActive((int)currentExperimentMode == i);
     }
 
     private static string FormatClock(float seconds)
