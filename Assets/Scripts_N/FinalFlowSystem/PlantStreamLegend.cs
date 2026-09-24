@@ -36,10 +36,10 @@ public static class PlantStreamLegend
     {
         new Row("Raw water / H₂ stream", WaterHydrogen, false),
         new Row("Amine solvent / captured CO₂", AmineCapturedCo2, false),
-        new Row("Compressed syngas (3:1 H₂:CO₂)", CompressedSyngas, false),
+        new Row("Compressed synthesis gas (H₂ + CO₂)", CompressedSyngas, false),
         new Row("Hot reactor effluent", HotReactorEffluent, false),
         new Row("Crude methanol / water", CrudeMethanol, false),
-        new Row("Refined methanol (>99.85%)", RefinedMethanol, false),
+        new Row("Refined methanol product", RefinedMethanol, false),
         // Recycle is unconverted synthesis gas returning upstream, so it keeps the syngas
         // colour and is distinguished by the dashed swatch rather than by a second hue.
         new Row("Gas recycle loop", CompressedSyngas, true),
