@@ -151,6 +151,8 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
     private Text tankCaption;
     private readonly UIValueText[][] tileValues = new UIValueText[4][];
     private readonly RectTransform[] processTiles = new RectTransform[4];
+    private readonly Text[] processTileTitles = new Text[4];
+    private readonly Button[] processTileOpenButtons = new Button[4];
     private bool processTilesDrawerLayout;
     private float nextRefresh;
 
@@ -585,10 +587,11 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
             UITheme.TopLeft(badge.rectTransform, 16f, 14f, 26f, 26f);
             Image square = UITheme.Panel("Swatch", badge.transform, colors[i], 3f);
             UITheme.Center(square.rectTransform, 10f, 10f);
-            Txt(tile, "Title", titles[i], 14f, W.ExtraBold, UITheme.Ink, 52f, 16f, 180f, 22f);
+            processTileTitles[i] = Txt(tile, "Title", titles[i], 14f, W.ExtraBold, UITheme.Ink, 52f, 16f, 180f, 22f);
 
             string moduleId = moduleIds[i];
             Button open = UITheme.MakeButton("Open " + titles[i], tile, "Open", Kind.Link, 12.5f, Icon.ChevronRight, 8f, true, 14f, W.ExtraBold, 8f);
+            processTileOpenButtons[i] = open;
             float ow = UITheme.PreferredWidth(open);
             UITheme.TopRight((RectTransform)open.transform, 10f, 12f, ow, 30f);
             open.onClick.AddListener(() => ModulePanels()?.OpenModule(moduleId, true));
@@ -638,6 +641,23 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
             tile.anchorMax = new Vector2(max, 1f);
             tile.offsetMin = new Vector2(i == 0 ? 0f : 4f, 0f);
             tile.offsetMax = new Vector2(i == processTiles.Length - 1 ? 0f : -4f, 0f);
+
+            // Compact the tile header while the drawer owns the right side. This avoids
+            // title/Open-button collisions after the cards are narrowed to the remaining area.
+            Text title = processTileTitles[i];
+            if (title != null)
+            {
+                title.fontSize = drawerOpen ? 12.5f : 14f;
+                Vector2 titleSize = title.rectTransform.sizeDelta;
+                titleSize.x = drawerOpen ? 128f : 180f;
+                title.rectTransform.sizeDelta = titleSize;
+            }
+            Button open = processTileOpenButtons[i];
+            if (open != null)
+            {
+                Text label = open.GetComponentInChildren<Text>(true);
+                if (label != null) label.fontSize = drawerOpen ? 11.5f : 12.5f;
+            }
         }
     }
 
