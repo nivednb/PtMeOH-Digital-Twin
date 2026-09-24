@@ -204,7 +204,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     private void BuildExperimentModeRow(RectTransform root)
     {
         RectTransform row = UITheme.NewRect("OFAT Mode Row", root);
-        UITheme.TopBand(row, 0f, 80f, 0f, 32f);
+        UITheme.TopBand(row, 0f, 0f, 0f, 32f);
         Text lbl = UITheme.Label("Mode Label", row, "OFAT mode", 12.5f, W.ExtraBold, UITheme.Subtle);
         UITheme.TopLeft(lbl.rectTransform, 0f, 0f, 76f, 32f);
 
@@ -234,7 +234,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
     private void BuildVariableRow(RectTransform root)
     {
         RectTransform row = UITheme.NewRect("Variable Row", root);
-        UITheme.TopBand(row, 0f, 0f, 0f, 32f);
+        UITheme.TopBand(row, 0f, 40f, 0f, 32f);
         Text lbl = UITheme.Label("Vary Label", row, "Vary one", 12.5f, W.ExtraBold, UITheme.Subtle);
         UITheme.TopLeft(lbl.rectTransform, 0f, 0f, 70f, 32f);
 
@@ -1193,6 +1193,7 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         {
             if (varButtons[i] == null) continue;
             bool active = VariableOrder[i] == currentVar;
+            varButtons[i].interactable = !(currentExperimentMode == ExperimentMode.AutoSweep && VariableOrder[i] == Variable.Free);
             varButtons[i].Skin()?.SetActive(active);
             if (varDots[i] != null) varDots[i].color = active ? Color.white : Vars[VariableOrder[i]].Color;
         }
