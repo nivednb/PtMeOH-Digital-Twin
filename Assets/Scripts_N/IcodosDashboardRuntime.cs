@@ -150,6 +150,8 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
     private UIProgressBar tankBar;
     private Text tankCaption;
     private readonly UIValueText[][] tileValues = new UIValueText[4][];
+    private readonly RectTransform[] processTiles = new RectTransform[4];
+    private bool processTilesDrawerLayout;
     private float nextRefresh;
 
     public static IcodosDashboardRuntime Instance { get; private set; }
@@ -257,6 +259,7 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
         HideLegacyDashboard();
         Build();
         Refresh();
+        UpdateProcessTileDrawerLayout();
     }
 
     private void OnDestroy()
@@ -280,6 +283,7 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
 
     private void Update()
     {
+        UpdateProcessTileDrawerLayout();
         if (Time.unscaledTime < nextRefresh) return;
         nextRefresh = Time.unscaledTime + 0.2f;
         Refresh();
@@ -571,6 +575,7 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
         for (int i = 0; i < 4; i++)
         {
             RectTransform tile = UITheme.Card(titles[i], strip, 14f);
+            processTiles[i] = tile;
             tile.anchorMin = new Vector2(i * 0.25f, 0f);
             tile.anchorMax = new Vector2((i + 1) * 0.25f, 1f);
             tile.offsetMin = new Vector2(i == 0 ? 0f : 6f, 0f);
@@ -608,6 +613,31 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
                 UITheme.TopBand((RectTransform)value.transform, 0f, 18f, 0f, 22f);
                 tileValues[i][c] = value;
             }
+        }
+    }
+
+    /// <summary>Adapts the bottom process cards when a module drawer is open so the
+    /// controls never cover educational KPI content. The dock remains unchanged.</summary>
+    private void UpdateProcessTileDrawerLayout()
+    {
+        bool drawerOpen = ModulePanels()?.AnyPanelOpen ?? false;
+        if (drawerOpen == processTilesDrawerLayout) return;
+        processTilesDrawerLayout = drawerOpen;
+
+        // At the 1440x810 reference size the 388 px drawer occupies about 27% of the
+        // dashboard width. Keep all four cards visible by fitting them into the left 72%.
+        // CanvasScaler preserves this relationship at 1920x1080 and 1280x720.
+        float rightEdge = drawerOpen ? 0.72f : 1f;
+        for (int i = 0; i < processTiles.Length; i++)
+        {
+            RectTransform tile = processTiles[i];
+            if (tile == null) continue;
+            float min = rightEdge * i / processTiles.Length;
+            float max = rightEdge * (i + 1) / processTiles.Length;
+            tile.anchorMin = new Vector2(min, 0f);
+            tile.anchorMax = new Vector2(max, 1f);
+            tile.offsetMin = new Vector2(i == 0 ? 0f : 4f, 0f);
+            tile.offsetMax = new Vector2(i == processTiles.Length - 1 ? 0f : -4f, 0f);
         }
     }
 
