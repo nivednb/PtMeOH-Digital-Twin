@@ -4782,7 +4782,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OrbitCameraController
   pivot: {fileID: 0}
-  worldOrigin: {x: 35, y: 4, z: 0}
+  worldOrigin: {x: 0, y: 0, z: -20}
   focusPoints:
   - {fileID: 806518947}
   - {fileID: 992085809}
@@ -4844,9 +4844,9 @@ MonoBehaviour:
   minElevation: -89
   maxElevation: 89
   useOrthographic: 1
-  orthographicSize: 85
-  startAzimuth: 180
-  startElevation: 18
+  orthographicSize: 40
+  startAzimuth: 200
+  startElevation: 20
 --- !u!1001 &331483272
 PrefabInstance:
   m_ObjectHideFlags: 0
