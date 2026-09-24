@@ -72,9 +72,6 @@ public class OrbitCameraController : MonoBehaviour
     [Tooltip("True isometric/3D-scanner look: orthographic removes perspective foreshortening so the orbit reads as pure rotation around the object rather than depth-based movement.")]
     public bool useOrthographic = true;
     public float orthographicSize = 40f;
-    [Tooltip("Automatically centers and frames the complete process model for the home view.")]
-    public bool autoFrameWholePlant = true;
-    [Range(1f, 2f)] public float wholePlantFramePadding = 1.2f;
 
     [Header("Starting angles (degrees)")]
     public float startAzimuth = 0f;
@@ -119,11 +116,6 @@ public class OrbitCameraController : MonoBehaviour
 
     void Start()
     {
-        if (autoFrameWholePlant)
-        {
-            FrameWholePlantFromRenderers();
-        }
-
         _azimuth = startAzimuth;
         _elevation = startElevation;
         _cam = GetComponent<Camera>();
@@ -154,45 +146,6 @@ public class OrbitCameraController : MonoBehaviour
 
         UpdateModuleNameLabel();
         UpdateCameraPosition();
-    }
-
-    private void FrameWholePlantFromRenderers()
-    {
-        Renderer[] renderers = FindObjectsByType<Renderer>();
-        bool found = false;
-        Bounds bounds = default;
-        foreach (Renderer renderer in renderers)
-        {
-            if (renderer == null || ShouldIgnoreForWholePlantFrame(renderer)) continue;
-            Bounds candidate = renderer.bounds;
-            bool oversizedFloor = candidate.size.x > 120f && candidate.size.z > 80f && candidate.size.y < 2f;
-            if (oversizedFloor || renderer.gameObject.name == "Plane") continue;
-            if (!found) { bounds = candidate; found = true; }
-            else bounds.Encapsulate(candidate);
-        }
-
-        if (!found) return;
-        worldOrigin = bounds.center;
-        float aspect = _cam != null ? _cam.aspect : (Screen.height > 0 ? (float)Screen.width / Screen.height : 16f / 9f);
-        float halfHeightForWidth = bounds.extents.x / Mathf.Max(0.5f, aspect);
-        orthographicSize = Mathf.Max(bounds.extents.y, halfHeightForWidth, bounds.extents.z) * wholePlantFramePadding;
-        orthographicSize = Mathf.Max(orthographicSize, 20f);
-        Debug.Log($"OrbitCameraController: framed plant at {worldOrigin}, ortho {orthographicSize:F1}, bounds {bounds.size}.");
-    }
-
-    private static bool ShouldIgnoreForWholePlantFrame(Renderer renderer)
-    {
-        Transform current = renderer.transform;
-        while (current != null)
-        {
-            string value = current.name;
-            if (value.Contains("Generated_Plant_Environment") || value.Contains("Generated Whole Plant Flow") ||
-                value.Contains("Generated Interactive Module") || value.Contains("Generated Reactor Detail") ||
-                value.Contains("FlowParticle") || value.Contains("ThinGuide_") || value.Contains("Canvas") ||
-                value.Contains("Label") || value.Contains("TMP")) return true;
-            current = current.parent;
-        }
-        return false;
     }
 
     /// <summary>
