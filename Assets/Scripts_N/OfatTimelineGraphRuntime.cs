@@ -9,17 +9,15 @@ using Kind = UITheme.ButtonKind;
 using W = UITheme.Weight;
 
 /// <summary>
-/// Guided OFAT experiment recorder.
+/// Guided OFAT analysis with two modes.
 ///
-/// Pick a reactor variable (Temperature, Pressure, H2/CO2, GHSV, Feed flow): its module
-/// slider stays live and every OTHER reactor slider is locked constant (via
-/// InteractiveModulePanelRuntime.SetReactorVariableLock). As you move the one live slider
-/// the plant's response (yield / efficiency / methanol) is sampled over time and drawn as a
-/// line whose colour is that variable's colour — so the trace is segmented by "which factor
-/// was being varied". Each variable switch drops a timestamped marker.
+/// Interactive mode locks every reactor slider except the selected factor and records the
+/// live response over time. Auto-sweep mode snapshots the current operating inputs, varies
+/// exactly one selected factor across its educational range, and evaluates every point with
+/// PlantProcessSimulator.Simulate() without mutating the running plant.
 ///
-/// Module-change dots are still shown (Points mode), exactly like the correlation graphs.
-/// The time axis is paginated one minute per page so only ~120 samples are ever rendered.
+/// Module-change dots are shown in interactive Points mode. The interactive time axis is
+/// paginated one minute per page; automatic sweeps render 13 model-calculated points.
 /// </summary>
 public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandler, IPointerExitHandler
 {
@@ -588,7 +586,14 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         nextSampleTime = 0f;
         pageIndex = 0;
         followLive = true;
-        currentVar = currentExperimentMode == ExperimentMode.AutoSweep ? Variable.Temperature : Variable.Free;
+        if (currentExperimentMode == ExperimentMode.AutoSweep)
+        {
+            if (currentVar == Variable.Free) currentVar = Variable.Temperature;
+        }
+        else
+        {
+            currentVar = Variable.Free;
+        }
         epochs.Add(new Epoch { T = 0f, Var = currentVar, VarValue = 0f });
         sweepPoints.Clear();
         hasSweepBaseline = false;
