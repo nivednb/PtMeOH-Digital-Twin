@@ -393,8 +393,7 @@ public sealed class TutorialRuntime : MonoBehaviour
 
         // The card grows with its text.
         float bodyHeight = Mathf.Ceil(cardBody.preferredHeight);
-        cardBody.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, bodyHeight);
-        card.sizeDelta = new Vector2(CardWidth, Mathf.Max(CardMinHeight, 86f + bodyHeight + 86f));
+        card.sizeDelta = new Vector2(CardWidth, Mathf.Max(CardMinHeight, 82f + bodyHeight + 86f));
 
         bool first = index == 0;
         previousButton.interactable = !first;
