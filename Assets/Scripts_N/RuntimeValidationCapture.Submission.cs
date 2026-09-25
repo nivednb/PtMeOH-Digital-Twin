@@ -35,6 +35,18 @@ public sealed partial class RuntimeValidationCapture
     {
         yield return new WaitForSecondsRealtime(1f);
         ScreenCapture.CaptureScreenshot(Path.Combine(validationFolder,name+".png"));
+        var external=FindAnyObjectByType<ExternalAnalyticsWindow>();
+        if(external!=null && external.IsOpen)
+        {
+            yield return new WaitForEndOfFrame();
+            var target=Field<RenderTexture>(external,"target");
+            var previous=RenderTexture.active;
+            RenderTexture.active=target;
+            var capture=new Texture2D(target.width,target.height,TextureFormat.RGB24,false);
+            capture.ReadPixels(new Rect(0,0,target.width,target.height),0,0);capture.Apply();
+            File.WriteAllBytes(Path.Combine(validationFolder,name+"-analytics.png"),capture.EncodeToPNG());
+            Destroy(capture);RenderTexture.active=previous;
+        }
         yield return new WaitForSecondsRealtime(1f);
     }
     private IEnumerator ValidateSubmission(string folder, string[] args)
@@ -64,17 +76,19 @@ public sealed partial class RuntimeValidationCapture
         Check(FindObjectsByType<IcodosDashboardRuntime>().Length==1,"Single dashboard owner");
         Check(FindAnyObjectByType<SafetyWarningRuntime>()!=null,"Warning overlay startup");
         Check(FindObjectsByType<PipeFlowAnimator>().Length>=35,"Flow animator coverage");
+        ValidateReactorTracers();
         if(sim==null){Application.Quit(1);yield break;}
         yield return ValidateTutorial();
-        foreach(string page in new[]{"OVERVIEW","PLANT PROCESS","FLOW LAB","REACTOR LAB","SIMULATION","ANALYTICS"})
+        yield return ValidateDaylightIntegration();
+        foreach(string page in new[]{"OVERVIEW","PROCESS MAP","FLOW LAB","REACTOR LAB","SIMULATION","ANALYTICS"})
         {
             var b=NamedButton(page);Check(b!=null && b.interactable,"Navigation exists "+page);
             if(b!=null)b.onClick.Invoke();
             yield return CaptureEvidence(page.Replace(' ','-').ToLowerInvariant());
         }
         var dashboard=IcodosDashboardRuntime.Instance;
-        Check(dashboard!=null && dashboard.TryGetAnalyticsWindowScreenRect(out Rect analyticsRect) && analyticsRect.width>0,"Analytics split pane opens");
-        NamedButton("ANALYTICS")?.onClick.Invoke();
+        Check(dashboard!=null && Field<bool>(dashboard,"analyticsWindowOpen") && FindAnyObjectByType<ExternalAnalyticsWindow>().IsOpen,"Analytics native window opens");
+        dashboard.TutorialSetAnalyticsView(false,null);
         NamedButton("OVERVIEW")?.onClick.Invoke();
         var cameraController=FindAnyObjectByType<OrbitCameraController>();
         Check(cameraController!=null,"Camera controller");
@@ -150,5 +164,36 @@ public sealed partial class RuntimeValidationCapture
         FlushValidation();
         Application.logMessageReceived-=ObserveLog;
         Application.Quit(validationFailures==0?0:1);
+    }
+
+    private void ValidateReactorTracers()
+    {
+        var root=GameObject.Find("Lightweight Reactor Cutaway");
+        var shell=FindObjectsByType<Renderer>(FindObjectsInactive.Include)
+            .FirstOrDefault(r=>r.name=="Reactor_Shell");
+        Check(root!=null && shell!=null,"Reactor cutaway and shell exist");
+        if(root==null || shell==null)return;
+        Bounds vessel=shell.bounds;
+        float radialLimit=Mathf.Min(vessel.extents.x,vessel.extents.z);
+        var streams=root.GetComponentsInChildren<ParticleSystem>();
+        Check(streams.Length==7,"Side inlet, catalyst and top outlet tracer streams exist");
+        int observed=0;
+        bool contained=true;
+        foreach(var stream in streams)
+        {
+            var particles=new ParticleSystem.Particle[stream.main.maxParticles];
+            int count=stream.GetParticles(particles);
+            observed+=count;
+            for(int i=0;i<count;i++)
+            {
+                Vector3 p=particles[i].position;
+                float halfSize=particles[i].GetCurrentSize(stream)*.5f;
+                float radial=new Vector2(p.x-vessel.center.x,p.z-vessel.center.z).magnitude;
+                if(radial+halfSize>radialLimit+.02f ||
+                   p.y-halfSize<vessel.min.y-.02f || p.y+halfSize>vessel.max.y+.02f)
+                    contained=false;
+            }
+        }
+        Check(observed>0 && contained,"Live reactor tracers stay inside cylindrical vessel");
     }
 }
