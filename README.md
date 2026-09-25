@@ -37,6 +37,7 @@ Unity using **Tools → Power-to-Methanol → Build Windows Application**.
 
 - [Final project report](docs/FINAL_PROJECT_REPORT.md)
 - [Implementation and engineering reference](docs/IMPLEMENTATION_REFERENCE.md)
+- [Final submission screenshot gallery](docs/final-screenshots.md)
 - [Development screenshots](docs/progress-screenshots.md)
 
 ## Main features
@@ -88,6 +89,8 @@ Assets/
 docs/
 |-- FINAL_PROJECT_REPORT.md
 |-- IMPLEMENTATION_REFERENCE.md
+|-- final-screenshots.md         # Curated frames from the final Windows build
+|-- screenshots/final/          # Final-build screenshot assets
 `-- progress-screenshots.md
 Packages/
 ProjectSettings/
