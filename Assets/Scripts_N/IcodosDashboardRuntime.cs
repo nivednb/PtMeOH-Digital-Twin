@@ -639,24 +639,32 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
             float max = rightEdge * (i + 1) / processTiles.Length;
             tile.anchorMin = new Vector2(min, 0f);
             tile.anchorMax = new Vector2(max, 1f);
-            tile.offsetMin = new Vector2(i == 0 ? 0f : 4f, 0f);
-            tile.offsetMax = new Vector2(i == processTiles.Length - 1 ? 0f : -4f, 0f);
+            tile.offsetMin = new Vector2(i == 0 ? 0f : (drawerOpen ? 4f : 6f), 0f);
+            tile.offsetMax = new Vector2(i == processTiles.Length - 1 ? 0f : (drawerOpen ? -4f : -6f), 0f);
 
             // Compact the tile header while the drawer owns the right side. This avoids
             // title/Open-button collisions after the cards are narrowed to the remaining area.
             Text title = processTileTitles[i];
             if (title != null)
             {
-                title.fontSize = drawerOpen ? 12.5f : 14f;
+                title.fontSize = drawerOpen ? 13 : 14;
                 Vector2 titleSize = title.rectTransform.sizeDelta;
                 titleSize.x = drawerOpen ? 128f : 180f;
                 title.rectTransform.sizeDelta = titleSize;
+            }
+            // The four metric columns also narrow with the card; keep values and units
+            // inside their own columns, then restore the normal typography on close.
+            foreach (UIValueText value in tileValues[i])
+            {
+                value.Value.fontSize = drawerOpen ? 12 : 16;
+                value.Unit.fontSize = drawerOpen ? 8 : 11;
+                value.GetComponent<HorizontalLayoutGroup>().spacing = drawerOpen ? 1f : 3f;
             }
             Button open = processTileOpenButtons[i];
             if (open != null)
             {
                 Text label = open.GetComponentInChildren<Text>(true);
-                if (label != null) label.fontSize = drawerOpen ? 11.5f : 12.5f;
+                if (label != null) label.fontSize = drawerOpen ? 12 : 13;
             }
         }
     }
@@ -720,12 +728,16 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
             "The catalyst colour shows the operating state; the moving particles visualise species and conversion.",
             13f, W.Medium, UITheme.Muted, 18f, 220f, 304f, 100f, TextAnchor.UpperLeft, true);
         body.lineSpacing = 1.12f;
+        float bodyHeight = Mathf.Max(100f, Mathf.Ceil(body.preferredHeight));
+        body.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, bodyHeight);
+        float buttonTop = 220f + bodyHeight + 14f;
+        card.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, buttonTop + 54f + 44f + 18f);
 
         Button focusReactor = UITheme.MakeButton("FOCUS REACTOR", card, "Focus reactor", Kind.Primary, 14f, Icon.Focus, 10f);
-        UITheme.TopLeft((RectTransform)focusReactor.transform, 18f, 330f, 304f, 44f);
+        UITheme.TopLeft((RectTransform)focusReactor.transform, 18f, buttonTop, 304f, 44f);
         focusReactor.onClick.AddListener(() => Focus(7));
         Button reactorControls = UITheme.MakeButton("OPEN REACTOR CONTROLS", card, "Open reactor controls", Kind.Secondary, 14f, Icon.Sliders, 10f);
-        UITheme.TopLeft((RectTransform)reactorControls.transform, 18f, 384f, 304f, 44f);
+        UITheme.TopLeft((RectTransform)reactorControls.transform, 18f, buttonTop + 54f, 304f, 44f);
         reactorControls.onClick.AddListener(() => ModulePanels()?.OpenModule("reactor", false));
     }
 

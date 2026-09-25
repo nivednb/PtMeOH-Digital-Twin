@@ -754,7 +754,9 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
         if (haveRun) FlushRun(ref poolUsed, runVar);
         for (int i = poolUsed; i < linePool.Count; i++) linePool[i].ClearPoints();
 
-        // epoch markers
+        // Keep nearby event captions in separate lanes; leave event times and data intact.
+        var captionBounds = new List<Rect>();
+        var shownCaptions = new HashSet<string>();
         foreach (Epoch e in epochs)
         {
             if (e.T < pageStart || e.T > pageEnd) continue;
@@ -769,12 +771,17 @@ public sealed class OfatTimelineGraphRuntime : MonoBehaviour, IPointerMoveHandle
             string epochText = e.Var == Variable.Free
                 ? $"Free · {FormatClock(e.T)}"
                 : $"{Vars[e.Var].Label} = {GraphVisualUtils.FormatValue(e.VarValue, VarUnit(e.Var))} · {FormatClock(e.T)}";
+            if (!shownCaptions.Add(epochText)) continue;
             Text lab = UITheme.Label("Epoch Label", epochLayer, epochText, 11f, W.ExtraBold, Vars[e.Var].Color, TextAnchor.LowerLeft);
             RectTransform lr = lab.rectTransform;
             lr.anchorMin = lr.anchorMax = new Vector2(0.5f, 0.5f);
             lr.pivot = new Vector2(0f, 0f);
-            lr.anchoredPosition = new Vector2(x + 4f, r.yMin + r.height - 15f);
-            lr.sizeDelta = new Vector2(180f, 14f);
+            float captionWidth = Mathf.Min(r.width, Mathf.Max(180f, lab.preferredWidth + 4f));
+            Rect caption = new Rect(Mathf.Clamp(x + 4f, r.xMin, r.xMax - captionWidth), r.yMax - 15f, captionWidth, 14f);
+            while (captionBounds.Exists(other => other.Overlaps(caption))) caption.y -= 18f;
+            captionBounds.Add(caption);
+            lr.anchoredPosition = caption.position;
+            lr.sizeDelta = caption.size;
         }
 
         // module change points

@@ -35,6 +35,18 @@ public sealed partial class RuntimeValidationCapture
     {
         yield return new WaitForSecondsRealtime(1f);
         ScreenCapture.CaptureScreenshot(Path.Combine(validationFolder,name+".png"));
+        var external=FindAnyObjectByType<ExternalAnalyticsWindow>();
+        if(external!=null && external.IsOpen)
+        {
+            yield return new WaitForEndOfFrame();
+            var target=Field<RenderTexture>(external,"target");
+            var previous=RenderTexture.active;
+            RenderTexture.active=target;
+            var capture=new Texture2D(target.width,target.height,TextureFormat.RGB24,false);
+            capture.ReadPixels(new Rect(0,0,target.width,target.height),0,0);capture.Apply();
+            File.WriteAllBytes(Path.Combine(validationFolder,name+"-analytics.png"),capture.EncodeToPNG());
+            Destroy(capture);RenderTexture.active=previous;
+        }
         yield return new WaitForSecondsRealtime(1f);
     }
     private IEnumerator ValidateSubmission(string folder, string[] args)
@@ -66,15 +78,16 @@ public sealed partial class RuntimeValidationCapture
         Check(FindObjectsByType<PipeFlowAnimator>().Length>=35,"Flow animator coverage");
         if(sim==null){Application.Quit(1);yield break;}
         yield return ValidateTutorial();
-        foreach(string page in new[]{"OVERVIEW","PLANT PROCESS","FLOW LAB","REACTOR LAB","SIMULATION","ANALYTICS"})
+        yield return ValidateDaylightIntegration();
+        foreach(string page in new[]{"OVERVIEW","PROCESS MAP","FLOW LAB","REACTOR LAB","SIMULATION","ANALYTICS"})
         {
             var b=NamedButton(page);Check(b!=null && b.interactable,"Navigation exists "+page);
             if(b!=null)b.onClick.Invoke();
             yield return CaptureEvidence(page.Replace(' ','-').ToLowerInvariant());
         }
         var dashboard=IcodosDashboardRuntime.Instance;
-        Check(dashboard!=null && dashboard.TryGetAnalyticsWindowScreenRect(out Rect analyticsRect) && analyticsRect.width>0,"Analytics split pane opens");
-        NamedButton("ANALYTICS")?.onClick.Invoke();
+        Check(dashboard!=null && Field<bool>(dashboard,"analyticsWindowOpen") && FindAnyObjectByType<ExternalAnalyticsWindow>().IsOpen,"Analytics native window opens");
+        dashboard.TutorialSetAnalyticsView(false,null);
         NamedButton("OVERVIEW")?.onClick.Invoke();
         var cameraController=FindAnyObjectByType<OrbitCameraController>();
         Check(cameraController!=null,"Camera controller");
