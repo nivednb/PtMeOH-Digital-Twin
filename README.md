@@ -1,26 +1,82 @@
 # Power-to-Methanol Digital Twin
 
-This university group project presents an educational steady-state Power-to-Methanol process model through an interactive Unity application. The dashboard connects process inputs, species flows, recycle, product recovery, storage warnings and one-factor-at-a-time studies.
+Interactive Unity 6 educational visualization of a complete Power-to-Methanol
+(PtM) plant. The application combines a full industrial plant layout, process
+dashboard, interactive operating controls, engineering stream visualization,
+reactor/catalyst visualization, warnings, equipment focus views, and a
+lightweight steady-state process model.
 
-## Open and rebuild
+> This is a master's-project educational digital-twin demonstrator. It is not a
+> CFD model, a rigorous thermodynamic/kinetic simulator, a plant control system,
+> or certified process-safety software.
 
-Use Unity 6000.4.7f1 with Windows Build Support. Open this folder in Unity Hub and allow the first asset import to finish. The startup scene is `Assets/Scenes/SampleScene.unity`. Package versions are pinned in `Packages/manifest.json` and `Packages/packages-lock.json`; the initial import requires access to the Unity package registry.
+## Current integrated version
 
-The project uses URP 17.4.0, Input System 1.19.0, uGUI 2.0.0 and Test Framework 1.6.0.
-
-Run **Tools > Power-to-Methanol > Validate Final Submission** for numerical, scene and CSV checks. Run **Tools > Power-to-Methanol > Build Windows Application** for a Windows x86_64 build. The default output is `Builds/Windows/PtMeOH-DigitalTwin.exe`. Keep the complete player folder together when distributing or launching it.
-
-## Use
-
-Follow the first-launch tutorial or choose **HELP > START TUTORIAL** to replay it. Use OVERVIEW, PLANT PROCESS and REACTOR to inspect and control the plant. Drag the mouse to orbit, Shift-drag to pan and use the wheel to zoom. ANALYTICS contains five automatic OFAT studies. CSV export records the current synthesis-loop state.
+- Unity: `6000.4.7f1`
+- Render pipeline: URP `17.4.0`
+- Startup scene: `Assets/Scenes/SampleScene.unity`
+- Windows build: `D:\Builds\PowerToMethanolDigitalTwin\PowerToMethanolDigitalTwin.exe`
+- Latest recorded validation: successful scene validation and successful
+  Windows build with zero build errors
 
 ## Documentation
 
-- `docs/SCIENTIFIC_VALIDATION.md`: scientific basis, independent equations and model limitations.
-- `docs/IMPLEMENTATION_REFERENCE.md`: implementation and operating assumptions.
-- `docs/NUMERICAL_RESULTS.md`: numerical sensitivity results.
-- `docs/VALIDATION_RESULTS.md`: verification of this source snapshot and Windows build.
-- `docs/MANUAL_TEST_CHECKLIST.md`: student checks before submission.
-- `docs/REFERENCES_AND_ASSET_PROVENANCE.md`: references, licences and unresolved asset provenance.
+- [Final project report](docs/FINAL_PROJECT_REPORT.md)
+- [Implementation and equation reference](docs/IMPLEMENTATION_REFERENCE.md)
+- [Progress screenshots](docs/progress-screenshots.md)
 
-The model is not calibrated to an industrial plant. Material-balance closure demonstrates numerical consistency, not experimental predictive accuracy. Energy balances and measured learning effectiveness are outside the project scope. The accompanying academic report contains the project contribution and assistance disclosures.
+## Main systems
+
+- Central process model and live operating snapshot
+- Electrolyzer, CO2 capture, compression, methanol synthesis, condensation,
+  separation/distillation, recycle, and storage visualization
+- Flow speed, density, visibility, and stream composition coupled to process
+  controls
+- Discrete H2, CO2, and recycle packets in mixed-gas routes
+- Transparent process pipes with direction-aware shader animation
+- Transparent reactor shell, upflow reactor visualization, and
+  conversion-dependent catalyst-bed color
+- ICODOS-inspired dashboard, KPIs, module navigation, equipment controls, and
+  educational warnings
+- Orbit, pan, zoom, overview, and module-focus camera controls
+- Lightweight procedurally generated plant environment
+
+## Open and run
+
+1. Open Unity Hub.
+2. Add this repository folder.
+3. Open it with Unity `6000.4.7f1`.
+4. Open `Assets/Scenes/SampleScene.unity`.
+5. Enter Play Mode.
+
+Camera controls:
+
+| Input | Action |
+| --- | --- |
+| Arrow keys | Orbit |
+| A / D | Pan left / right |
+| W / S | Zoom |
+| Shift + arrow keys | Cycle module focus |
+| Home | Return to plant overview |
+
+## Repository structure
+
+```text
+Assets/
+|-- Editor/                     # Inventory, release validation, Windows build
+|-- Materials_N/                # Process-stream and equipment materials
+|-- Scenes/SampleScene.unity    # Integrated plant scene
+|-- Scripts_N/                  # Simulation, UI, flow, reactor, warnings
+|-- Settings/                   # URP configuration
+|-- *.fbx                       # Plant equipment and pipe assets
+|-- PipeFlow.shader             # Multi-species packet flow shader
+`-- legacy/support scripts      # Earlier panels and prototype utilities
+docs/
+|-- FINAL_PROJECT_REPORT.md
+`-- IMPLEMENTATION_REFERENCE.md
+Packages/
+ProjectSettings/
+```
+
+Unity-generated folders (`Library`, `Temp`, `Logs`, `UserSettings`, `.vs`,
+`obj`) are excluded from Git.
