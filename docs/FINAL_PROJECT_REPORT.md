@@ -9,11 +9,11 @@ indicators, equipment-focused views, and educational process warnings.
 
 The integrated application presents the following process chain:
 
-1. renewable electricity and water electrolysis;
-2. hydrogen production;
+1. water treatment and demineralized-water supply;
+2. renewable-electricity water electrolysis and hydrogen production;
 3. CO2 capture using an amine absorption/regeneration representation;
 4. feed compression and mixing;
-5. catalytic methanol synthesis;
+5. catalytic methanol synthesis with steady-state recycle/purge;
 6. cooling, condensation, flash separation, and gas recycle;
 7. distillation/purification; and
 8. methanol storage.
@@ -33,11 +33,16 @@ source of truth is the principal digital-twin architecture of the project.
 - An ICODOS-inspired application shell with module navigation, a stream
   legend, plant-status KPIs, equipment information, and operating controls.
 - A central process simulator that responds continuously to UI inputs.
-- Direction-aware flow visualization for pure, mixed-gas, liquid, and
-  two-phase routes.
+- A fixed-point steady-state recycle/purge mass balance with limiting-reactant
+  handling for the methanol loop.
+- A water-treatment source connected to the electrolyzer.
+- Direction-aware continuous flow visualization for pure, mixed-gas, liquid,
+  and two-phase routes.
 - Multi-species packets in mixed feed, recycle, and reactor-effluent pipes.
-- A transparent reactor shell, lightweight upflow reaction visualization, and
-  operating-state catalyst-bed color.
+- A transparent reactor shell, contained upflow reaction visualization,
+  operating-state catalyst-bed color, and live reaction hover card.
+- A Daylight-styled dashboard, welcome/tutorial flow, separate analytics
+  window, correlation curves, and mass-balance CSV export.
 - Educational warnings for important operating limits.
 - Windows desktop build and editor-side structural validation tools.
 
@@ -68,7 +73,7 @@ the dashboard as “EDUCATIONAL VISUALIZATION • SIMPLIFIED PROCESS VALUES.”
 | Platform | Windows desktop |
 | Scene | `Assets/Scenes/SampleScene.unity` |
 | Version control | Git / GitHub |
-| Integrated branch | `main` |
+| Submission branch | `submission_final` |
 
 The project contains no first-party assembly-definition files. Runtime scripts
 therefore compile into `Assembly-CSharp`, while scripts in `Assets/Editor`
@@ -126,19 +131,22 @@ The maximum theoretical methanol rate is the smaller of:
 - `H2 rate × 32 / 6`; and
 - `CO2 rate × 32 / 44`.
 
-Reactor yield is influenced by temperature, pressure, H2/CO2 ratio, gas hourly
-space velocity (GHSV), feed rate, and recycle. These relationships are
-bounded heuristic response curves used to demonstrate correct qualitative
-dependencies. They are not a Langmuir–Hinshelwood kinetic model and do not
-resolve the reverse water-gas-shift reaction, heat transfer, pressure drop,
-hot spots, or catalyst deactivation quantitatively.
+The displayed reactor yield is the calculated single-pass CO2 conversion.
+Temperature response peaks at approximately 240 °C and is intentionally
+asymmetric: the heuristic kinetic fall-off below the optimum is gentler than
+the equilibrium-side fall-off above it. Pressure, H2/CO2 ratio, and GHSV also
+modify the single-pass conversion. The recycle/purge loop is then solved to a
+steady-state fixed point with limiting-reactant detection. These relationships
+are educational engineering response curves, not a Langmuir–Hinshelwood
+kinetic model, and they do not resolve reverse water-gas-shift kinetics, heat
+transfer, pressure drop, hot spots, or catalyst deactivation quantitatively.
 
-The reactor model uses a side/lower feed nozzle and a top product outlet.
-Reactants enter from the side, distribute into an upflow packed-bed region,
-convert throughout the catalyst volume, and leave through the upper outlet as
-methanol vapor, water vapor, and unreacted/recycled gas. This routing is
-consistent with the existing 3D geometry and is explicitly a visual
-representation rather than CFD.
+The external synthesis-feed network routes material to the reactor, while the
+reactor cutaway visualization starts its contained bubbles in the lower
+cylindrical region, distributes them across the packed-bed cross-section, and
+moves them upward toward the top outlet. A fraction equal to the live
+single-pass conversion changes to product visualization within the bed. This
+is explicitly an explanatory flow representation rather than CFD.
 
 ### 4.5 Condensation, separation, recycle, and purification
 
@@ -195,7 +203,7 @@ dependency on stable hierarchy and route names.
 | `FinalPlantFlowRuntime` | Route discovery, species composition, live flow coupling |
 | `PipeFlowAnimator` | Material-property animation for each pipe segment |
 | `PipeFlow.shader` | Transparent carrier and discrete moving species packets |
-| `LightweightReactorVisual` | Low-cost side-inlet/upflow reactor visualization |
+| `LightweightReactorVisual` | Contained low-cost upflow reactor cutaway visualization |
 | `CatalystBedColorAnimator` | Catalyst color from load, conversion, temperature |
 | `IcodosDashboardRuntime` | Header, navigation, legend, status, KPIs, footer |
 | `InteractiveModulePanelRuntime` | Equipment panels, sliders, live values |
@@ -273,14 +281,14 @@ activity remains visible without removing the engineering geometry.
 ### 7.2 Lightweight reaction visual
 
 Earlier dense reactor particle prototypes caused stability problems on the
-development laptop. The current implementation intentionally caps the live
-reactor population below approximately 260 particles. It depicts:
+development laptop. The final implementation caps the live reactor population
+at 150 bubbles and uses build-preserved reactor materials so the effect remains
+available in the Windows player. It depicts:
 
-1. H2, CO2, and recycle entering through the side/lower nozzle;
-2. distribution into the full packed-bed cross-section;
+1. H2, CO2, and recycle entering the lower reactor visualization region;
+2. distribution across the packed-bed cross-section;
 3. conversion activity through the catalyst region; and
-4. methanol vapor, water vapor, and remaining gas moving upward to the top
-   product outlet.
+4. product and remaining gas gathering toward the top outlet.
 
 The effect is an explanatory flow field, not a molecular simulation.
 
@@ -302,20 +310,21 @@ of commercial catalyst color or catalyst surface chemistry.
 
 ### 8.1 Dashboard
 
-The runtime dashboard provides:
+The final Daylight runtime UI provides:
 
-- top navigation for Overview, Electrolyzer, Carbon Capture, Synthesis,
-  Separation, and Storage;
-- a process-stream color legend;
-- plant status;
-- efficiency, methanol-production, and CO2-utilization KPIs;
-- module-specific bottom summaries;
-- equipment information and process controls;
-- previous/next module navigation; and
-- reset and help actions.
+- a floating header/brand card and pill-style navigation;
+- a process-stream color legend and plant-status presentation;
+- an efficiency ring plus live production/utilization KPIs;
+- module-specific summaries and a bottom dock;
+- scrollable right-hand module-control drawers;
+- a welcome screen and guided tutorial;
+- an independently movable analytics window in the Windows build; and
+- reset/help and equipment-focus actions.
 
-The visual direction is based on the supplied HTML/Figma/ICODOS references,
-while remaining a Unity-native runtime UI.
+The analytics view records numbered operating points, displays constant-condition
+background curves, allows a recorded point to trace its own dotted model curve,
+and can export the mass-balance CSV. The visual direction remains Unity-native
+while following the supplied ICODOS/reference design language.
 
 ### 8.2 Interactive controls
 
@@ -339,8 +348,8 @@ visual flows to update together.
 
 Arrow keys orbit the selected focus, A/D translate the camera laterally, W/S
 zoom, Shift+arrow cycles equipment modules, and Home restores the overview.
-Focused navigation enables close inspection without losing the complete-plant
-context.
+The final camera controller constrains orbit/focus motion above the ground and
+keeps the view above the horizon, reducing accidental below-site viewpoints.
 
 ## 9. Warnings and engineering communication
 
@@ -367,8 +376,9 @@ as equipment trips, alarms, relief settings, or certified safe operating limits.
 `PlantEnvironmentBuilder` creates a lightweight industrial context using Unity
 primitives: slab, roads, safety markings, fencing, pipe racks, utility areas,
 containment, tank-farm context, service frames, control structures, and
-equipment plinths. This provides a complete plant setting without importing a
-large commercial asset library.
+equipment plinths. The final scene also includes a demineralized-water source
+with storage, pump, reverse-osmosis/polishing equipment and a water line to the
+electrolyzer. The site apron extends beneath the background equipment row.
 
 The equipment models remain relatively low-poly to maintain laptop
 performance. The dashboard, stream visualization, transparency, close-up
@@ -378,17 +388,13 @@ views, and animated process state provide the primary visual sophistication.
 
 ### 11.1 Confirmed evidence
 
-The editor release validator recorded:
-
-`RELEASE_VALIDATION_OK scene=Assets/Scenes/SampleScene.unity objects=480 processSegments=35 catalyst=runtime-animated shell=present cameraPan=enabled`
-
-The Windows build log recorded:
-
-- result: Build Successful;
-- errors: 0;
-- warnings: 37; and
-- executable:
-  `D:\Builds\PowerToMethanolDigitalTwin\PowerToMethanolDigitalTwin.exe`.
+The project includes editor-side release validation, numerical recycle
+mass-balance validation, mass-balance CSV validation, and a strict Windows build
+entry point. During the final September 25 development cycle, a fresh Windows
+build was produced in `Builds/Daylight/` after the final reactor-build fix,
+water-treatment integration, graph-curve/label work, and camera constraints;
+the completed commits were then pushed to `chaitanya-dev` and transferred
+unchanged into the submission project.
 
 The structural validator checks:
 
@@ -402,8 +408,8 @@ The structural validator checks:
 
 ### 11.2 Validation limitations
 
-- No first-party EditMode or PlayMode unit tests were found.
-- The 37 build warnings have not all been eliminated.
+- The project uses editor validation utilities rather than a comprehensive
+  first-party EditMode/PlayMode regression suite.
 - Structural validation does not prove every camera angle or operating
   combination is visually perfect.
 - Chemical results have not been calibrated against a rigorous external
@@ -414,8 +420,8 @@ The structural validator checks:
 - Pipe flow is shader-driven instead of using one object per packet.
 - Runtime properties use `MaterialPropertyBlock` to avoid unnecessary material
   duplication.
-- Reactor particles are deliberately capped after laptop crashes during
-  denser implementations.
+- Reactor bubbles are deliberately capped at 150 after instability in denser
+  earlier implementations.
 - The environment uses reusable procedural primitives.
 - Process updates are throttled rather than recalculated for every rendered
   frame.
