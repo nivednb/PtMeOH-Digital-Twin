@@ -169,16 +169,22 @@ public sealed partial class RuntimeValidationCapture
     private void ValidateReactorTracers()
     {
         var root=GameObject.Find("Lightweight Reactor Cutaway");
-        var shell=FindObjectsByType<Renderer>(FindObjectsInactive.Include)
-            .FirstOrDefault(r=>r.name=="Reactor_Shell");
-        Check(root!=null && shell!=null,"Reactor cutaway and shell exist");
-        if(root==null || shell==null)return;
+        var renderers=FindObjectsByType<Renderer>(FindObjectsInactive.Include);
+        var shell=renderers.FirstOrDefault(r=>r.name=="Reactor_Shell");
+        var catalyst=renderers.FirstOrDefault(r=>r.name=="Catalyst_Bed");
+        Check(root!=null && shell!=null && catalyst!=null,"Reactor cutaway, shell and catalyst exist");
+        if(root==null || shell==null || catalyst==null)return;
+
         Bounds vessel=shell.bounds;
+        Bounds bed=catalyst.bounds;
         float radialLimit=Mathf.Min(vessel.extents.x,vessel.extents.z);
+        float bedRadialLimit=Mathf.Min(bed.extents.x,bed.extents.z);
         var streams=root.GetComponentsInChildren<ParticleSystem>();
         Check(streams.Length==7,"Side inlet, catalyst and top outlet tracer streams exist");
+
         int observed=0;
         bool contained=true;
+        bool catalystContained=true;
         foreach(var stream in streams)
         {
             var particles=new ParticleSystem.Particle[stream.main.maxParticles];
@@ -192,8 +198,24 @@ public sealed partial class RuntimeValidationCapture
                 if(radial+halfSize>radialLimit+.02f ||
                    p.y-halfSize<vessel.min.y-.02f || p.y+halfSize>vessel.max.y+.02f)
                     contained=false;
+
+                if(stream.name=="Catalyst conversion")
+                {
+                    float bedRadial=new Vector2(p.x-bed.center.x,p.z-bed.center.z).magnitude;
+                    if(bedRadial+halfSize>bedRadialLimit+.02f ||
+                       p.y-halfSize<bed.min.y-.02f || p.y+halfSize>bed.max.y+.02f)
+                        catalystContained=false;
+                }
             }
         }
         Check(observed>0 && contained,"Live reactor tracers stay inside cylindrical vessel");
+        Check(catalystContained,"Catalyst conversion tracers stay inside catalyst bed");
+
+        var sideStreams=streams.Where(x=>x.name.EndsWith("from side inlet")).ToArray();
+        var topStreams=streams.Where(x=>x.name.EndsWith("to top outlet")).ToArray();
+        Check(sideStreams.Length==3 && sideStreams.All(x=>Mathf.Abs(x.transform.forward.y)<.55f),
+            "Feed tracers enter laterally beside catalyst bed");
+        Check(topStreams.Length==3 && topStreams.All(x=>x.transform.forward.y>.55f),
+            "Product tracers travel upward toward top outlet");
     }
 }
