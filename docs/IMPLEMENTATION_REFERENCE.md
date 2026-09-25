@@ -10,14 +10,17 @@ are relative to the repository root.
 | File | Current role |
 | --- | --- |
 | `Assets/Scripts_N/PlantProcessSimulator.cs` | Central process inputs, equations, snapshot |
+| `Assets/Scripts_N/RecycleMassBalanceEngine.cs` | Fixed-point CO2/H2 recycle/purge balance |
 | `Assets/Scripts_N/FinalFlowSystem/FinalPlantFlowRuntime.cs` | Route discovery and process-to-flow coupling |
 | `Assets/PipeFlowAnimator.cs` | Per-segment shader property animation |
 | `Assets/PipeFlow.shader` | Transparent carrier and moving species packets |
 | `Assets/Scripts_N/FinalFlowSystem/PlantFlowKind.cs` | Stream classifications |
 | `Assets/Scripts_N/FinalFlowSystem/LightweightReactorVisual.cs` | Low-cost upflow reactor visual |
 | `Assets/Scripts_N/FinalFlowSystem/CatalystBedColorAnimator.cs` | Catalyst operating-state color |
-| `Assets/Scripts_N/IcodosDashboardRuntime.cs` | Main application dashboard |
-| `Assets/Scripts_N/InteractiveModulePanelRuntime.cs` | Equipment panels and controls |
+| `Assets/Scripts_N/IcodosDashboardRuntime.cs` | Daylight dashboard and analytics-window integration |
+| `Assets/Scripts_N/CorrelationGraphRuntime.cs` | Recorded points, constant-condition curves and point tracing |
+| `Assets/Scripts_N/ReactorReactionCard.cs` | Reactor hover card with live reaction rates |
+| `Assets/Scripts_N/InteractiveModulePanelRuntime.cs` | Equipment panels and scrollable controls |
 | `Assets/Scripts_N/SafetyWarningRuntime.cs` | Educational warnings |
 | `Assets/OrbitCameraController.cs` | Camera navigation and focus |
 | `Assets/Scripts_N/PlantEnvironmentBuilder.cs` | Runtime industrial environment |
@@ -85,70 +88,122 @@ Design reference rates:
 
 ### 3.1 Electrolyzer
 
+The final simulator limits hydrogen production independently by electrical
+power and by available feed-water hydrogen mass:
+
 ```text
-powerFactor = powerPercent / 100
-waterFactor = waterPercent / 100
-electrolyzerFactor = min(powerFactor, Lerp(0.15, 1.10, waterFactor))
-H2 = designH2 × plantRamp × electrolyzerFactor
-waterFeed = designWater × plantRamp × waterFactor
-O2 = H2 × 8
+powerFactor = clamp01(electrolyzerPower / 100)
+waterFactor = clamp01(waterFeedPercent / 100)
+waterFeed = designWaterFeed × plantRamp × waterFactor
+
+H2_from_power = designH2 × plantRamp × powerFactor
+H2_from_water = waterFeed × (2.01588 / 18.01528)
+H2 = min(H2_from_power, H2_from_water)
+
+O2 = H2 × ((18.01528 - 2.01588) / 2.01588)
 ```
 
 ### 3.2 Capture
 
 ```text
-amineFactor = (aminePercent / 100)^0.55
+amineFactor = clamp01(aminePercent / 100)^0.55
 regenFactor = InverseLerp(82, 118, regenerationTemperature)
-steamFactor = (steamPercent / 100)^0.45
+steamFactor = clamp01(steamPercent / 100)^0.45
+
 captureEfficiency =
-    clamp(0.18 + 0.46×amineFactor
-               + 0.22×regenFactor
-               + 0.14×steamFactor)
-capturedCO2 = inputCO2 × captureEfficiency
+    clamp01(0.18
+          + 0.46×amineFactor
+          + 0.22×regenFactor
+          + 0.14×steamFactor)
+
+capturedCO2 = designCO2 × plantRamp × flueGasFactor × captureEfficiency
 ```
 
-### 3.3 Synthesis feed and yield
+### 3.3 Reactor single-pass conversion
+
+The dashboard reactor yield is the single-pass CO2 conversion. The response is
+centered on 240 °C and is intentionally asymmetric so every 180–300 °C
+temperature step produces a distinct curve:
 
 ```text
-syngasFeed = (H2 + capturedCO2) × feedFactor
-temperatureRate = InverseLerp(210, 255, reactorTemperature)
-highTemperaturePenalty = 0 … 0.32 between 255 and 310 °C
-pressureFactor = reactorPressure / 100
-ratioFactor = 1 - clamp(|H2CO2Ratio - 3| / 3) × 0.42
-residenceFactor = clamp(8000 / GHSV, 0.35, 1.35)
-recycleBoost = Lerp(0.86, 1.18, recyclePercent / 100)
-reactorYield = bounded product of the above factors
+deltaT = temperatureK - 513.15
+
+temperatureFactor =
+    exp(-0.0004 × deltaT²)   when temperature < 240 °C
+    exp(-0.0006 × deltaT²)   when temperature >= 240 °C
+
+pressureFactor = (max(1, pressureBar) / 70)^0.35
+velocityFactor = (8000 / max(1000, GHSV))^0.2
+ratioFactor = 1 - clamp01(|H2CO2Ratio - 3| / 3) × 0.42
+
+singlePassCO2Conversion =
+    clamp(0.25 × temperatureFactor
+               × pressureFactor
+               × velocityFactor
+               × ratioFactor,
+          0.02, 0.35)
 ```
 
-Stoichiometric production:
+The selected H2/CO2 molar ratio and reactor-feed percentage determine the fresh
+H2 and CO2 sent into the recycle calculation.
+
+### 3.4 Steady-state recycle/purge balance
+
+The recycle loop represents:
+
+`CO2 + 3 H2 → CH3OH + H2O`
+
+with methanol and water removed before gas recycle. The solver iterates the
+unreacted gas recycle to a fixed point:
 
 ```text
-theoreticalFromH2 = H2 × 32 / 6
-theoreticalFromCO2 = capturedCO2 × 32 / 44
-theoreticalMethanol = min(theoreticalFromH2, theoreticalFromCO2)
+reactorCO2 = freshCO2 + recycleCO2
+reactorH2  = freshH2  + recycleH2
+
+extent = min(reactorCO2, reactorH2 / 3) × singlePassCO2Conversion
+
+unreactedCO2 = reactorCO2 - extent
+unreactedH2  = reactorH2  - 3×extent
+
+recycleCO2 = unreactedCO2 × recycleFraction
+recycleH2  = unreactedH2  × recycleFraction
+
+purgeCO2 = unreactedCO2 × (1 - recycleFraction)
+purgeH2  = unreactedH2  × (1 - recycleFraction)
 ```
 
-### 3.4 Recovery and purification
+The implementation detects the limiting reactant, iterates until the recycle
+change meets a tight tolerance, and reports external mass-balance closure.
+
+### 3.5 Condensation, separation and purification
 
 ```text
+coolingFactor =
+    clamp01((coolingWaterFlow / 100) × InverseLerp(45, 8, coolingWaterTemperature))
+
 condenserRecovery = Lerp(0.55, 0.98, coolingFactor)
-separatorFactor = 1 - temperature penalty around 34 °C
+separatorFactor = 1 - clamp01(|separatorTemperature - 34| / 35) × 0.16
+
 distillationFactor =
-    0.72 + 0.11×normalizedReflux + 0.17×normalizedReboiler
+    clamp01(0.72
+          + 0.11×InverseLerp(0.5, 5, refluxRatio)
+          + 0.17×InverseLerp(76, 105, reboilerTemperature))
+
 methanolPurity =
-    clamp(90 + 7.2×normalizedReflux + 2.4×normalizedReboiler,
-          88, 99.85)
-distillationEnergyIndex =
-    18 + 12×refluxRatio + 36×normalizedReboiler
-methanol =
-    min(designMethanol, theoreticalMethanol)
-    × reactorYield
+    clamp(90
+        + 7.2×InverseLerp(0.5, 5, refluxRatio)
+        + 2.4×InverseLerp(78, 105, reboilerTemperature),
+        88, 99.85)
+
+reactorMethanol = converged recycle-balance methanol production
+finalMethanol =
+    min(designMethanol, reactorMethanol)
     × condenserRecovery
     × separatorFactor
     × distillationFactor
-recycleGas = unconvertedGas × recycleFraction × 0.36
-overallEfficiency = methanol / theoreticalMethanol
-waterProduct = methanol × 18 / 32
+
+recycleGas = converged recycleCO2 + recycleH2
+overallEfficiency = finalMethanol / theoreticalFreshFeedMethanol
 ```
 
 ## 4. Flow response
@@ -178,12 +233,13 @@ Reference normalizations:
 
 | Process stream | Visual species |
 | --- | --- |
+| Water-treatment route | water |
 | H2 route | H2 |
-| CO2 route | CO2 |
+| CO2 / amine routes | captured CO2 / solvent family |
 | Mixed synthesis feed | calculated H2 + CO2 + recycle |
-| Recycle gas | 74% recycle, 20% CO2, 6% H2 (illustrative) |
-| Reactor effluent | 58% hot product, 32% recycle, 10% water (illustrative) |
-| Crude condensed product | 64% methanol, 36% water (illustrative) |
+| Recycle gas | unconverted synthesis-gas visualization |
+| Reactor effluent | hot product + remaining gas visualization |
+| Crude condensed product | methanol/water visualization |
 | Purified product | methanol |
 
 Mixed-feed molar weighting:
@@ -201,40 +257,33 @@ component-by-component stream table.
 
 ## 6. Stream colors
 
-Values below are approximate sRGB hex conversions of the configured Unity
-colors.
+`PlantStreamLegend` is the single color authority used by both the legend and
+the runtime flow system.
 
-| Species/stream | Unity RGB | Hex |
+| Stream family | Hex | Meaning |
 | --- | --- | --- |
-| Hydrogen | (0.10, 1.00, 0.22) | `#1AFF38` |
-| Carbon dioxide | (0.86, 0.94, 1.00) | `#DBF0FF` |
-| Recycle gas | (0.72, 0.28, 1.00) | `#B847FF` |
-| Rich amine | (0.04, 0.72, 0.42) | `#0AB86B` |
-| Lean amine | (0.05, 0.92, 0.52) | `#0DEB85` |
-| Hot syngas | (1.00, 0.58, 0.12) | `#FF941F` |
-| Reactor effluent | (1.00, 0.42, 0.12) | `#FF6B1F` |
-| Crude vapor/product | (0.72, 0.18, 1.00) | `#B82EFF` |
-| Crude liquid | (0.35, 0.42, 1.00) | `#596BFF` |
-| Methanol product | (0.20, 0.78, 1.00) | `#33C7FF` |
+| Water / H2 | `#38BDF8` | Raw-water and hydrogen family |
+| Amine / captured CO2 | `#EC4899` | Pink solvent/captured-CO2 family |
+| Syngas / mixed feed / recycle | `#F59E0B` | Synthesis-gas family |
+| Reactor effluent | `#EF4444` | Hot reactor-effluent family |
+| Crude methanol / water | `#A855F7` | Crude condensed-product family |
+| Refined methanol | `#22C55E` | Final methanol-product family |
 
-Catalyst states:
+The recycle legend row is dashed to communicate that it returns gas upstream.
 
-| State | Unity RGB | Meaning |
-| --- | --- | --- |
-| Idle | (0.72, 0.60, 0.24) | Low/no synthesis load |
-| Active | (0.12, 0.78, 0.40) | Normal loaded operation |
-| Converting | (1.00, 0.48, 0.04) | High conversion/activity |
-| Overtemperature | (1.00, 0.08, 0.02) | Temperature warning |
+Catalyst states remain presentation states driven by load, conversion and
+temperature rather than literal catalyst colors.
 
 ## 7. Route direction reference
 
 | Route | Engineering direction |
 | --- | --- |
+| Raw water | Water-treatment unit → electrolyzer |
 | Electrolyzer H2 | Electrolyzer → mixing T-junction |
 | Captured CO2 | Capture/compression → mixing T-junction |
 | Recycle gas | Separator/recycle loop → mixing T-junction |
-| Mixed feed/syngas | T-junction → reactor feed preparation → reactor side inlet |
-| Reactor internal | Side/lower inlet → packed bed → top outlet |
+| Mixed feed/syngas | T-junction → reactor feed preparation → reactor |
+| Reactor internal visual | Lower cylindrical region → packed bed → top outlet |
 | Reactor effluent | Reactor top outlet → condenser/separation |
 | Crude methanol/water | Condenser/separator → purification |
 | Methanol product | Purification → storage |
@@ -244,16 +293,19 @@ against mesh ordering; it does not reverse the engineering process.
 
 ## 8. Reactor visual limits
 
-- Maximum live population: approximately 260 particles.
-- Simulation space: world-oriented visual root to avoid inherited 3× imported
-  model scaling.
-- Shell alpha: approximately 0.16.
-- Cap alpha: approximately 0.18.
-- Entry: side/lower product-named geometry used as current feed side in the
-  imported model.
-- Exit: top nozzle.
-- Conversion occupies the catalyst-bed volume.
-- Products shown: methanol vapor, water vapor, remaining gas.
+- Maximum live population: 150 bubbles.
+- Simulation space: world-oriented visual root to avoid inherited imported-model scaling.
+- Shell alpha: approximately 0.14.
+- Cap alpha: approximately 0.16.
+- Catalyst-bed alpha: approximately 0.50.
+- Bubble positions are analytically constrained inside the packed-bed radius
+  and straight cylindrical vessel height.
+- Entry visualization: lower cylindrical reactor region.
+- Exit visualization: flow gathers toward the top outlet.
+- A fraction equal to live single-pass conversion changes to product color in
+  the catalyst bed.
+- Reactor materials are stored under `Resources/ReactorVisual` so required
+  shaders remain available in player builds.
 
 ## 9. Educational warning thresholds
 
@@ -297,6 +349,8 @@ Editor tooling supplies:
 - release validation; and
 - Windows build.
 
-The current logs record a successful structural validation and successful
-Windows build. See `FINAL_PROJECT_REPORT.md` for the exact evidence and
-limitations.
+The final development cycle produced a fresh Windows build in
+`Builds/Daylight/` after the September 25 reactor-build, water-treatment,
+analytics-curve/label and camera fixes. The submission branch contains the
+committed project state from that cycle. See `FINAL_PROJECT_REPORT.md` for the
+scope and validation limitations.
