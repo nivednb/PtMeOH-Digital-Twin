@@ -33,6 +33,7 @@ public class PlantEnvironmentBuilder : MonoBehaviour
     [SerializeField] private bool createUtilityZone = true;
     [SerializeField] private bool createStorageContainment = true;
     [SerializeField] private bool createIndustrialBackground = true;
+    [SerializeField] private bool createCc0AssetSurroundings = true;
     [SerializeField] private Color industrialBackdropColor = new Color(0.50f, 0.61f, 0.72f, 1f);
 
     private Material concreteMaterial;
@@ -122,7 +123,10 @@ public class PlantEnvironmentBuilder : MonoBehaviour
 
         // Optional CC0 asset layer. The helper only decorates the perimeter and falls back
         // cleanly to the primitive environment if an external model is unavailable.
-        PtMeOHSiteAssetEnvironment.Build(root.transform, center, siteWidth, siteDepth, baseY);
+        if (createCc0AssetSurroundings)
+        {
+            PtMeOHSiteAssetEnvironment.Build(root.transform, center, siteWidth, siteDepth, baseY);
+        }
 
         CreateSiteSign(root.transform, center, siteWidth, siteDepth, baseY);
         SuppressLargeFloatingPlanes(baseY);
