@@ -34,6 +34,7 @@ public class PlantEnvironmentBuilder : MonoBehaviour
     [SerializeField] private bool createStorageContainment = true;
     [SerializeField] private bool createIndustrialBackground = true;
     [SerializeField] private bool createCc0AssetSurroundings = true;
+    [SerializeField] private bool createExtendedHorizonSurroundings = true;
     [SerializeField] private Color industrialBackdropColor = new Color(0.50f, 0.61f, 0.72f, 1f);
 
     private Material concreteMaterial;
@@ -128,12 +129,24 @@ public class PlantEnvironmentBuilder : MonoBehaviour
             PtMeOHSiteAssetEnvironment.Build(root.transform, center, siteWidth, siteDepth, baseY);
         }
 
+        // The existing builder intentionally covers only the immediate plant site.
+        // Extend the world outside that boundary so orbit/elevated cameras see a
+        // continuous industrial landscape through the atmospheric horizon.
+        if (createExtendedHorizonSurroundings)
+        {
+            PtMeOHHorizonEnvironment.Build(root.transform, center, siteWidth, siteDepth, baseY);
+        }
+
         CreateSiteSign(root.transform, center, siteWidth, siteDepth, baseY);
         SuppressLargeFloatingPlanes(baseY);
     }
 
     private void ConfigureIndustrialBackdrop()
     {
+        // Reset fog first so disabling the optional extended horizon genuinely restores
+        // the original immediate-site presentation after an environment rebuild.
+        RenderSettings.fog = false;
+
         Camera[] cameras = FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (Camera sceneCamera in cameras)
         {
