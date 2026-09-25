@@ -129,8 +129,12 @@ public sealed class LightweightReactorVisual : MonoBehaviour
         var emission = ps.emission;
         emission.rateOverTime = rate;
         var shape = ps.shape;
-        shape.shapeType = ParticleSystemShapeType.Circle;
+        // A zero-angle cone is a circular emitter with forward (+Z) travel.
+        // Unity's Circle shape instead moves particles sideways in its plane.
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 0f;
         shape.radius = radius;
+        shape.radiusThickness = 1f;
         ParticleSystemRenderer renderer = ps.GetComponent<ParticleSystemRenderer>();
         Shader particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (particleShader == null) particleShader = Shader.Find("Particles/Standard Unlit");
