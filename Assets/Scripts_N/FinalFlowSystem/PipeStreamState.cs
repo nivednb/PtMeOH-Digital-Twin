@@ -3,9 +3,9 @@ using UnityEngine;
 /// <summary>
 /// Physical state of one process stream, evaluated from the live plant snapshot.
 ///
-/// This is the single source of truth for the educational pipe-state readout.
-/// Mass-flow values come from <see cref="PlantProcessSimulator"/>, while density, velocity and
-/// composition readouts use simplified engineering relations and nominal line dimensions:
+/// This is the single source of truth for "how much is actually flowing in this pipe".
+/// The mass flows come straight out of <see cref="PlantProcessSimulator"/>'s balances, and
+/// everything derived from them uses standard relations rather than invented numbers:
 ///
 ///   mass flow        m_dot = rho * A * v                 (so v = m_dot / (rho * A))
 ///   volumetric flow  Q     = m_dot / rho = A * v
@@ -65,8 +65,11 @@ public readonly struct PipeStreamState
     private const float R = 8.314462f;              // J / (mol K)
     private const float MH2 = 2.016f;               // g/mol
     private const float MCO2 = 44.01f;
+    private const float MCO = 28.01f;
     private const float MMeOH = 32.042f;
     private const float MH2O = 18.015f;
+    /// <summary>Recycle gas is ~74% H2, 20% CO2, 6% CO/inerts by mole — 11.97 g/mol.</summary>
+    private const float MRecycle = 0.74f * MH2 + 0.20f * MCO2 + 0.06f * MCO;
     /// <summary>kg CO2 carried per kg of 30 wt% MEA solution at a 0.25 mol/mol cyclic loading.</summary>
     private const float AmineCo2PerKg = 0.05405f;
     private const float MeaMassFraction = 0.30f;
@@ -87,6 +90,7 @@ public readonly struct PipeStreamState
             PlantFlowKind.CrudeMethanolVapourLiquid => 52.5f,                   // DN50
         PlantFlowKind.LiquidCrudeMethanol => 26.6f,                             // DN25
         PlantFlowKind.MethanolProduct => 21.7f,                                 // DN20
+        PlantFlowKind.Water => 26.6f,                                           // DN25
         _ => 52.5f
     };
 
@@ -116,6 +120,7 @@ public readonly struct PipeStreamState
         PlantFlowKind.CrudeMethanolVapourLiquid => "Condensed effluent to separator",
         PlantFlowKind.LiquidCrudeMethanol => "Crude methanol to distillation",
         PlantFlowKind.MethanolProduct => "Refined methanol product",
+        PlantFlowKind.Water => "Demineralised water to electrolyzer",
         _ => kind.ToString()
     };
 
@@ -159,23 +164,6 @@ public readonly struct PipeStreamState
         float h2Feed = freshFeed * (h2 / freshTotal);
         float co2Feed = freshFeed * (co2 / freshTotal);
 
-        // Reuse the validated H2/CO2 recycle balance rather than inventing a fixed recycle
-        // composition. The simplified process model contains no CO or inert component.
-        RecycleMassBalanceEngine.RecycleCalculationResult recycleCalc =
-            RecycleMassBalanceEngine.Calculate(
-                co2Feed,
-                h2Feed,
-                Mathf.Clamp01(s.reactorYieldPercent / 100f),
-                Mathf.Clamp01(s.recycleRatioPercent / 100f));
-        float recycleH2 = recycleCalc.Converged ? (float)recycleCalc.RecycleH2KgHr : 0f;
-        float recycleCo2 = recycleCalc.Converged ? (float)recycleCalc.RecycleCo2KgHr : 0f;
-        float recycleH2Kmol = recycleH2 / MH2;
-        float recycleCo2Kmol = recycleCo2 / MCO2;
-        float recycleKmol = recycleH2Kmol + recycleCo2Kmol;
-        float recycleMolarMass = recycleKmol > 1e-6f ? recycle / recycleKmol : (0.75f * MH2 + 0.25f * MCO2);
-        float recycleH2MolPercent = recycleKmol > 1e-6f ? recycleH2Kmol / recycleKmol * 100f : 75f;
-        float recycleCo2MolPercent = 100f - recycleH2MolPercent;
-
         switch (kind)
         {
             case PlantFlowKind.Hydrogen:
@@ -218,17 +206,18 @@ public readonly struct PipeStreamState
             {
                 float t = Mathf.Max(5f, sepT);
                 return new PipeStreamState(kind, DisplayName(kind), StreamPhase.Gas, recycle, t, reactorP,
-                    GasDensity(reactorP, t, recycleMolarMass), recycleMolarMass, InnerDiameterMm(kind),
-                    $"H2 {recycleH2MolPercent:F0}% · CO2 {recycleCo2MolPercent:F0}% (mol)");
+                    GasDensity(reactorP, t, MRecycle), MRecycle, InnerDiameterMm(kind),
+                    "H2 74% · CO2 20% · CO/inert 6% (mol)");
             }
 
             case PlantFlowKind.MixedFeed:
             case PlantFlowKind.SyngasCold:
             case PlantFlowKind.SyngasHeated:
             {
-                float nH2 = h2Feed / MH2 + recycleH2Kmol;
-                float nCO2 = co2Feed / MCO2 + recycleCo2Kmol;
-                float nTotal = Mathf.Max(1e-6f, nH2 + nCO2);
+                float nH2 = h2Feed / MH2;
+                float nCO2 = co2Feed / MCO2;
+                float nRec = recycle / MRecycle;
+                float nTotal = Mathf.Max(1e-6f, nH2 + nCO2 + nRec);
                 float m = reactorIn / nTotal;
                 float p = kind == PlantFlowKind.MixedFeed ? 30f : reactorP;
                 float t = kind switch
@@ -237,7 +226,7 @@ public readonly struct PipeStreamState
                     PlantFlowKind.SyngasCold => 40f,
                     _ => Mathf.Max(40f, reactorT - 25f)
                 };
-                string note = $"H2 {nH2 / nTotal * 100f:F0}% · CO2 {nCO2 / nTotal * 100f:F0}% (mol)";
+                string note = $"H2 {nH2 / nTotal * 100f:F0}% · CO2 {nCO2 / nTotal * 100f:F0}% · recycle {nRec / nTotal * 100f:F0}% (mol)";
                 return new PipeStreamState(kind, DisplayName(kind), StreamPhase.Gas, reactorIn, t, p,
                     GasDensity(p, t, m), m, InnerDiameterMm(kind), note);
             }
@@ -250,7 +239,7 @@ public readonly struct PipeStreamState
                 float nMeOH = meoh / MMeOH;
                 float nH2 = Mathf.Max(0f, h2Feed / MH2 - 3f * nMeOH);
                 float nCO2 = Mathf.Max(0f, co2Feed / MCO2 - nMeOH);
-                float nRec = recycleKmol;
+                float nRec = recycle / MRecycle;
                 float nTotal = Mathf.Max(1e-6f, nH2 + nCO2 + nRec + nMeOH + nMeOH);
                 float m = reactorIn / nTotal;
                 bool effluent = kind == PlantFlowKind.ReactorEffluent;
@@ -298,6 +287,14 @@ public readonly struct PipeStreamState
                     rho, 0f, InnerDiameterMm(kind), $"CH3OH {purity:F2} wt%");
             }
 
+            case PlantFlowKind.Water:
+            {
+                // Treated water from the RO skid, pumped to the electrolyzer feed.
+                const float t = 20f, p = 4f;
+                return new PipeStreamState(kind, DisplayName(kind), StreamPhase.Liquid, s.waterFeedKgH, t, p,
+                    WaterDensity(t), 0f, InnerDiameterMm(kind), "Demineralised H2O, conductivity < 1 µS/cm");
+            }
+
             default:
                 return new PipeStreamState(kind, DisplayName(kind), StreamPhase.Gas, 0f, 25f, 1f,
                     1.2f, 28.96f, InnerDiameterMm(kind), "—");
@@ -317,6 +314,7 @@ public readonly struct PipeStreamState
             PlantFlowKind.CrudeMethanolVapourLiquid => 2175f,
         PlantFlowKind.LiquidCrudeMethanol => 1953f,
         PlantFlowKind.MethanolProduct => 1250f,
+        PlantFlowKind.Water => 1935f,
         _ => 1000f
     };
 }
