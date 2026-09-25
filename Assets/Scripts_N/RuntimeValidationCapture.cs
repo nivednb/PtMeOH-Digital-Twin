@@ -6,27 +6,15 @@ using UnityEngine;
 /// Optional release-QA hook. Pass -ptmeoh-capture followed by a PNG path to
 /// capture the fully rendered player frame after startup.
 /// </summary>
-public sealed partial class RuntimeValidationCapture : MonoBehaviour
+public sealed class RuntimeValidationCapture : MonoBehaviour
 {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void TryCreate()
     {
         string[] args = System.Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length - 1; i++)
-        {
-            if (args[i] != "-ptmeoh-validate") continue;
-            var validation = new GameObject("Runtime Submission Validation").AddComponent<RuntimeValidationCapture>();
-            validation.StartCoroutine(validation.ValidateSubmission(args[i + 1], args));
-            return;
-        }
         string environmentPath = System.Environment.GetEnvironmentVariable("PTMEOH_CAPTURE_PATH");
         int environmentFocus = -1;
-        string environmentFocusValue = System.Environment.GetEnvironmentVariable("PTMEOH_CAPTURE_FOCUS");
-        if (!string.IsNullOrWhiteSpace(environmentFocusValue) &&
-            int.TryParse(environmentFocusValue, out int parsedEnvironmentFocus))
-        {
-            environmentFocus = parsedEnvironmentFocus;
-        }
+        int.TryParse(System.Environment.GetEnvironmentVariable("PTMEOH_CAPTURE_FOCUS"), out environmentFocus);
         int focusIndex = -1;
         for (int i = 0; i < args.Length - 1; i++)
         {
@@ -58,7 +46,7 @@ public sealed partial class RuntimeValidationCapture : MonoBehaviour
         yield return null;
         if (focusIndex >= 0)
         {
-            OrbitCameraController cameraController = FindAnyObjectByType<OrbitCameraController>();
+            OrbitCameraController cameraController = FindFirstObjectByType<OrbitCameraController>();
             cameraController?.FocusModule(focusIndex);
         }
 

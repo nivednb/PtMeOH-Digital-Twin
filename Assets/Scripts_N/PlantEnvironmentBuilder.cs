@@ -20,11 +20,19 @@ public class PlantEnvironmentBuilder : MonoBehaviour
     [SerializeField] private bool rebuildOnStart = true;
     [SerializeField] private float minimumSiteWidth = 78f;
     [SerializeField] private float minimumSiteDepth = 46f;
-    [SerializeField] private float maximumSiteWidth = 118f;
+    // Wide enough for the full process train (water treatment at the west end through the
+    // methanol tank at the east end) plus padding; a smaller cap ran the perimeter fence
+    // through the end equipment.
+    [SerializeField] private float maximumSiteWidth = 190f;
     [SerializeField] private float maximumSiteDepth = 72f;
     [SerializeField] private float sitePadding = 16f;
     [SerializeField] private float groundThickness = 0.25f;
     [SerializeField] private float environmentYOffset = -0.08f;
+
+    // Rear row of background utility vessels, as a fraction of site depth behind the centre,
+    // and how far the grass apron extends past that row.
+    private const float BackgroundRowDepth = 0.78f;
+    private const float BackgroundRowApronMargin = 6f;
 
     [Header("Industrial Details")]
     [SerializeField] private bool createPerimeterFence = true;
@@ -249,8 +257,13 @@ public class PlantEnvironmentBuilder : MonoBehaviour
 
     private void CreateGroundAndPads(Transform root, Vector3 center, float siteWidth, float siteDepth, float baseY)
     {
-        CreateCube("Site Grass Apron", root, new Vector3(center.x, baseY - 0.18f, center.z),
-            new Vector3(siteWidth + 18f, groundThickness, siteDepth + 16f), grassMaterial);
+        // The apron runs 8 m past the slab at the front and far enough behind it to carry the
+        // background equipment row, so nothing generated stands beyond the grass.
+        float apronFront = center.z - siteDepth * 0.5f - 8f;
+        float apronRear = Mathf.Max(center.z + siteDepth * 0.5f + 8f,
+            center.z + siteDepth * BackgroundRowDepth + BackgroundRowApronMargin);
+        CreateCube("Site Grass Apron", root, new Vector3(center.x, baseY - 0.18f, (apronFront + apronRear) * 0.5f),
+            new Vector3(siteWidth + 18f, groundThickness, apronRear - apronFront), grassMaterial);
 
         CreateCube("Main Concrete Plant Slab", root, new Vector3(center.x, baseY, center.z),
             new Vector3(siteWidth, groundThickness, siteDepth), concreteMaterial);
@@ -272,7 +285,7 @@ public class PlantEnvironmentBuilder : MonoBehaviour
     private void CreateIndustrialBackground(Transform root, Vector3 center, float siteWidth, float siteDepth, float baseY)
     {
         float rearZ = center.z + siteDepth * 0.58f;
-        float farZ = center.z + siteDepth * 0.78f;
+        float farZ = center.z + siteDepth * BackgroundRowDepth;
         float midZ = center.z + siteDepth * 0.48f;
         float leftX = center.x - siteWidth * 0.42f;
         float rightX = center.x + siteWidth * 0.42f;
@@ -685,6 +698,25 @@ public class PlantEnvironmentBuilder : MonoBehaviour
         float wallY = baseY + 0.32f;
         float width = siteWidth * 0.23f;
         float depth = siteDepth * 0.25f;
+
+        // A storage bund belongs around the product tank itself, with a walkway margin
+        // inside the wall; the site-fraction placement above is only a fallback.
+        GameObject tank = GameObject.Find("methanol tank");
+        Renderer[] tankRenderers = tank != null ? tank.GetComponentsInChildren<Renderer>() : new Renderer[0];
+        if (tankRenderers.Length > 0)
+        {
+            const float bundMargin = 3.5f;
+            Bounds tankBounds = tankRenderers[0].bounds;
+            foreach (Renderer tankRenderer in tankRenderers)
+            {
+                tankBounds.Encapsulate(tankRenderer.bounds);
+            }
+
+            bundX = tankBounds.center.x;
+            bundZ = tankBounds.center.z;
+            width = tankBounds.size.x + bundMargin * 2f;
+            depth = tankBounds.size.z + bundMargin * 2f;
+        }
 
         CreateCube("Storage Containment Floor", root, new Vector3(bundX, baseY + 0.06f, bundZ),
             new Vector3(width, 0.08f, depth), concreteMaterial);
