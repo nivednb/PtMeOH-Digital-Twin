@@ -1,0 +1,40 @@
+name: Import final submission screenshots
+
+on:
+  push:
+    branches:
+      - submission_final
+    paths:
+      - docs/final-screenshots.patch
+      - .github/workflows/import-final-screenshots.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import-screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out submission branch
+        uses: actions/checkout@v4
+        with:
+          ref: submission_final
+          fetch-depth: 0
+
+      - name: Apply curated screenshot patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --binary docs/final-screenshots.patch
+          test -f docs/screenshots/final/01-welcome-screen.webp
+          test -f docs/screenshots/final/14-equipment-close-up.webp
+
+      - name: Commit screenshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/final
+          git commit -m "Add final submission screenshots"
+          git push origin HEAD:submission_final
