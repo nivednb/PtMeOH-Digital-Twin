@@ -234,7 +234,10 @@ public static class PtMeOHSiteAssetEnvironment
 
         Collider[] colliders = instance.GetComponentsInChildren<Collider>(true);
         foreach (Collider collider in colliders)
-            Object.Destroy(collider);
+        {
+            if (Application.isPlaying) Object.Destroy(collider);
+            else Object.DestroyImmediate(collider);
+        }
 
         return instance;
     }
