@@ -150,10 +150,6 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
     private UIProgressBar tankBar;
     private Text tankCaption;
     private readonly UIValueText[][] tileValues = new UIValueText[4][];
-    private readonly RectTransform[] processTiles = new RectTransform[4];
-    private readonly Text[] processTileTitles = new Text[4];
-    private readonly Button[] processTileOpenButtons = new Button[4];
-    private bool processTilesDrawerLayout;
     private float nextRefresh;
 
     public static IcodosDashboardRuntime Instance { get; private set; }
@@ -261,7 +257,6 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
         HideLegacyDashboard();
         Build();
         Refresh();
-        UpdateProcessTileDrawerLayout();
     }
 
     private void OnDestroy()
@@ -285,7 +280,6 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
 
     private void Update()
     {
-        UpdateProcessTileDrawerLayout();
         if (Time.unscaledTime < nextRefresh) return;
         nextRefresh = Time.unscaledTime + 0.2f;
         Refresh();
@@ -577,7 +571,6 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
         for (int i = 0; i < 4; i++)
         {
             RectTransform tile = UITheme.Card(titles[i], strip, 14f);
-            processTiles[i] = tile;
             tile.anchorMin = new Vector2(i * 0.25f, 0f);
             tile.anchorMax = new Vector2((i + 1) * 0.25f, 1f);
             tile.offsetMin = new Vector2(i == 0 ? 0f : 6f, 0f);
@@ -587,11 +580,10 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
             UITheme.TopLeft(badge.rectTransform, 16f, 14f, 26f, 26f);
             Image square = UITheme.Panel("Swatch", badge.transform, colors[i], 3f);
             UITheme.Center(square.rectTransform, 10f, 10f);
-            processTileTitles[i] = Txt(tile, "Title", titles[i], 14f, W.ExtraBold, UITheme.Ink, 52f, 16f, 180f, 22f);
+            Txt(tile, "Title", titles[i], 14f, W.ExtraBold, UITheme.Ink, 52f, 16f, 180f, 22f);
 
             string moduleId = moduleIds[i];
             Button open = UITheme.MakeButton("Open " + titles[i], tile, "Open", Kind.Link, 12.5f, Icon.ChevronRight, 8f, true, 14f, W.ExtraBold, 8f);
-            processTileOpenButtons[i] = open;
             float ow = UITheme.PreferredWidth(open);
             UITheme.TopRight((RectTransform)open.transform, 10f, 12f, ow, 30f);
             open.onClick.AddListener(() => ModulePanels()?.OpenModule(moduleId, true));
@@ -615,56 +607,6 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
                 UIValueText value = UITheme.ValueText("Value", col, 15.5f, 11f, UITheme.Ink, UITheme.Muted);
                 UITheme.TopBand((RectTransform)value.transform, 0f, 18f, 0f, 22f);
                 tileValues[i][c] = value;
-            }
-        }
-    }
-
-    /// <summary>Adapts the bottom process cards when a module drawer is open so the
-    /// controls never cover educational KPI content. The dock remains unchanged.</summary>
-    private void UpdateProcessTileDrawerLayout()
-    {
-        bool drawerOpen = ModulePanels()?.AnyPanelOpen ?? false;
-        if (drawerOpen == processTilesDrawerLayout) return;
-        processTilesDrawerLayout = drawerOpen;
-
-        // At the 1440x810 reference size the 388 px drawer occupies about 27% of the
-        // dashboard width. Keep all four cards visible by fitting them into the left 72%.
-        // CanvasScaler preserves this relationship at 1920x1080 and 1280x720.
-        float rightEdge = drawerOpen ? 0.72f : 1f;
-        for (int i = 0; i < processTiles.Length; i++)
-        {
-            RectTransform tile = processTiles[i];
-            if (tile == null) continue;
-            float min = rightEdge * i / processTiles.Length;
-            float max = rightEdge * (i + 1) / processTiles.Length;
-            tile.anchorMin = new Vector2(min, 0f);
-            tile.anchorMax = new Vector2(max, 1f);
-            tile.offsetMin = new Vector2(i == 0 ? 0f : (drawerOpen ? 4f : 6f), 0f);
-            tile.offsetMax = new Vector2(i == processTiles.Length - 1 ? 0f : (drawerOpen ? -4f : -6f), 0f);
-
-            // Compact the tile header while the drawer owns the right side. This avoids
-            // title/Open-button collisions after the cards are narrowed to the remaining area.
-            Text title = processTileTitles[i];
-            if (title != null)
-            {
-                title.fontSize = drawerOpen ? 13 : 14;
-                Vector2 titleSize = title.rectTransform.sizeDelta;
-                titleSize.x = drawerOpen ? 128f : 180f;
-                title.rectTransform.sizeDelta = titleSize;
-            }
-            // The four metric columns also narrow with the card; keep values and units
-            // inside their own columns, then restore the normal typography on close.
-            foreach (UIValueText value in tileValues[i])
-            {
-                value.Value.fontSize = drawerOpen ? 12 : 16;
-                value.Unit.fontSize = drawerOpen ? 8 : 11;
-                value.GetComponent<HorizontalLayoutGroup>().spacing = drawerOpen ? 1f : 3f;
-            }
-            Button open = processTileOpenButtons[i];
-            if (open != null)
-            {
-                Text label = open.GetComponentInChildren<Text>(true);
-                if (label != null) label.fontSize = drawerOpen ? 12 : 13;
             }
         }
     }
@@ -728,16 +670,12 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
             "The catalyst colour shows the operating state; the moving particles visualise species and conversion.",
             13f, W.Medium, UITheme.Muted, 18f, 220f, 304f, 100f, TextAnchor.UpperLeft, true);
         body.lineSpacing = 1.12f;
-        float bodyHeight = Mathf.Max(100f, Mathf.Ceil(body.preferredHeight));
-        body.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, bodyHeight);
-        float buttonTop = 220f + bodyHeight + 14f;
-        card.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, buttonTop + 54f + 44f + 18f);
 
         Button focusReactor = UITheme.MakeButton("FOCUS REACTOR", card, "Focus reactor", Kind.Primary, 14f, Icon.Focus, 10f);
-        UITheme.TopLeft((RectTransform)focusReactor.transform, 18f, buttonTop, 304f, 44f);
+        UITheme.TopLeft((RectTransform)focusReactor.transform, 18f, 330f, 304f, 44f);
         focusReactor.onClick.AddListener(() => Focus(7));
         Button reactorControls = UITheme.MakeButton("OPEN REACTOR CONTROLS", card, "Open reactor controls", Kind.Secondary, 14f, Icon.Sliders, 10f);
-        UITheme.TopLeft((RectTransform)reactorControls.transform, 18f, buttonTop + 54f, 304f, 44f);
+        UITheme.TopLeft((RectTransform)reactorControls.transform, 18f, 384f, 304f, 44f);
         reactorControls.onClick.AddListener(() => ModulePanels()?.OpenModule("reactor", false));
     }
 
@@ -1022,7 +960,13 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
         UITheme.TopRight((RectTransform)windowRun.transform, right, 14f, runW, 36f);
         windowRun.onClick.AddListener(ToggleRunning);
         runToggleButtons.Add(windowRun);
-        right += runW + 12f;
+        right += runW + 8f;
+
+        Button exportBalance = UITheme.MakeButton("Export Mass Balance", titleBar, "Mass balance", Kind.Outline, 13f, Icon.Download, 10f, false, 15f, W.Bold, 12f);
+        float ew = UITheme.PreferredWidth(exportBalance);
+        UITheme.TopRight((RectTransform)exportBalance.transform, right, 14f, ew, 36f);
+        exportBalance.onClick.AddListener(ExportMassBalanceCsv);
+        right += ew + 12f;
 
         Image sep = UITheme.Panel("Divider", titleBar, UITheme.Line);
         UITheme.TopRight(sep.rectTransform, right, 20f, 1f, 24f);
@@ -1217,7 +1161,7 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
 
             CanvasGroup cg = BuildCorrelationGraph(graphHost, $"{display} vs {ReactorParamTitles[p]}",
                 ReactorParamAxisLabels[p], yLabel, ReactorParamSelectors[p], ySelector,
-                ReactorParamMin[p], ReactorParamMax[p], 0f, 100f);
+                ReactorParamMin[p], ReactorParamMax[p], 0f, 100f, p);
             graphGroups.Add(cg);
         }
 
@@ -1330,6 +1274,23 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
         if (sim == null) return;
         if (sim.IsRunning) sim.Pause(); else sim.Play();
         Refresh();
+    }
+
+    private void ExportMassBalanceCsv()
+    {
+        PlantProcessSimulator sim = PlantProcessSimulator.Instance;
+        Canvas toastCanvas = analyticsCanvas != null ? analyticsCanvas : canvas;
+        if (sim == null || sim.MassBalance == null)
+        {
+            GraphExportUtil.ShowToast(toastCanvas, font, "Mass balance: simulator not ready.");
+            return;
+        }
+
+        string baseName = GraphExportUtil.Sanitize($"MassBalance_{DateTime.Now:yyyyMMdd_HHmmss}");
+        string path = GraphExportUtil.WriteText(baseName, "csv", MassBalanceCsvExporter.BuildCsv(sim));
+        GraphExportUtil.ShowToast(toastCanvas, font, path != null
+            ? $"Exported {baseName}.csv to {GraphExportUtil.ExportDirectory}"
+            : "Export failed — see console.");
     }
 
     private void ResetSimulation()
@@ -1462,10 +1423,21 @@ public sealed class IcodosDashboardRuntime : MonoBehaviour
     private CanvasGroup BuildCorrelationGraph(RectTransform container, string title, string xLabel, string yLabel,
         Func<PlantProcessSimulator.ProcessSnapshot, float> xSelector,
         Func<PlantProcessSimulator.ProcessSnapshot, float> ySelector,
-        float xMin, float xMax, float yMin, float yMax)
+        float xMin, float xMax, float yMin, float yMax, int reactorParam)
     {
         GameObject go = new GameObject(title + " Graph", typeof(RectTransform));
         CorrelationGraphRuntime graph = go.AddComponent<CorrelationGraphRuntime>();
+        // Background model curves: constant temperature on every graph except the temperature
+        // graph itself, where constant-temperature curves would be vertical lines, so it holds
+        // pressure constant instead. ReactorParamNames order matches ReactorInput.
+        graph.ShowTrendCurves = true;
+        graph.XInput = (CorrelationGraphRuntime.ReactorInput)reactorParam;
+        bool temperatureAxis = graph.XInput == CorrelationGraphRuntime.ReactorInput.Temperature;
+        graph.FamilyInput = temperatureAxis ? CorrelationGraphRuntime.ReactorInput.Pressure : CorrelationGraphRuntime.ReactorInput.Temperature;
+        // Steps span each slider's full range.
+        graph.FamilyValues = temperatureAxis ? new[] { 40f, 55f, 70f, 85f, 100f } : new[] { 180f, 200f, 220f, 240f, 260f, 280f, 300f };
+        graph.FamilyName = temperatureAxis ? "pressure" : "temperature";
+        graph.FamilyUnit = temperatureAxis ? "bar" : "°C";
         graph.Title = title;
         graph.XLabel = xLabel;
         graph.YLabel = yLabel;
