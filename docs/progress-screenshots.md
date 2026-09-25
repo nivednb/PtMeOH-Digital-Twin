@@ -1,37 +1,60 @@
-# Progress screenshots
+# Development screenshots
 
-This page collects useful screenshots and reference images from the Sprint 5 slide deck and project material so the repository shows visible development progress without requiring Unity to be opened.
+This page keeps some of the screenshots used during development so that the
+progress of the project can be seen without opening Unity. Some of these images
+show earlier stages of the project and are therefore not identical to the
+final submission build.
 
-## Current Unity full-plant progress
+## Full-plant development
 
-The current branch contains a Unity 6 full-plant layout for the Power-to-Methanol process. It includes multiple process units, pipe routing, support/platform details, camera navigation, and early flow visualization work.
+The full-plant scene was built by integrating the main PtM equipment, pipe
+routes, support structures and camera navigation into one Unity scene. At this
+stage the overall plant layout was already in place, while the flow system and
+UI were still being developed.
 
 ![Unity full plant game view](images/unity-full-plant-game-view.png)
 
 ![Unity full plant scene overview](images/unity-full-plant-scene-overview.jpeg)
 
-## Reactor interaction prototype
+## Reactor prototype
 
-The reactor prototype demonstrates parameter controls for temperature, pressure, GHSV, and H2/CO2 ratio, with calculated methanol yield and live particle streams.
+The reactor interaction prototype was one of the earlier focused parts of the
+project. It was used to test controls for temperature, pressure, GHSV and
+H2/CO2 ratio together with methanol-yield calculation and internal particle
+flow.
 
 ![Reactor UI prototype](images/reactor-ui-prototype.png)
 
-## Equipment-detail progress
+The final submission keeps the same basic idea, but the reactor is now part of
+the complete plant. Its internal flow is constrained inside the reactor
+geometry and is linked to the shared process model.
 
-This detail shot shows model work around platform/ladder support structures and equipment connections.
+## Equipment-detail work
+
+This screenshot shows some of the work carried out around platforms, ladders,
+supports and equipment connections.
 
 ![Equipment detail with platform structures](images/equipment-detail-platforms.jpeg)
 
-## Target visual direction
+## UI reference used during development
 
-The final visual goal is closer to an industrial dashboard: labelled plant units, stream colors, module navigation, live KPIs, process values, and a polished overview interface.
+The ICODOS-style reference below was used as a visual direction while the
+dashboard was being redesigned.
 
 ![Target ICODOS-style UI reference](images/target-ui-reference-icodos.jpeg)
 
-## Feedback-driven next steps
+The final application does not reproduce this interface directly. It uses the
+same general idea of a clean industrial dashboard with module navigation,
+stream colours, KPIs and process values, but it was implemented as a
+Unity-native Daylight interface.
 
-- Make hydrogen and CO2 input sources explicit in the scene and UI.
-- Add a visible oxygen byproduct output from the electrolyzer.
-- Show gas/liquid percentages and process stream quantities.
-- Track process output from one unit into the next.
-- Accumulate purified methanol into the storage tank over time.
+## Changes completed after these screenshots
+
+After these development images were captured, the project was extended with
+continuous pipe flow, water treatment, live process coupling, the final
+Daylight dashboard, analytics, warnings, improved camera controls, the welcome
+screen/tutorial and the final reactor visualization.
+
+For the current project state, see the
+[final project report](FINAL_PROJECT_REPORT.md) and run the
+`submission_final` branch.
