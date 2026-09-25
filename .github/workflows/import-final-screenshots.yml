@@ -3,6 +3,7 @@ name: Import final submission screenshots
 on:
   push:
     branches:
+      - main
       - submission_final
     paths:
       - docs/final-screenshots.patch
