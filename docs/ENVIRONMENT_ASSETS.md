@@ -1,10 +1,28 @@
-# Optional Site Surroundings (CC0)
+# Site and Horizon Surroundings
 
-This branch adds a lightweight environment layer around the existing PtMeOH plant. It does **not** change the process model, process equipment, stream routing, analytics, or numerical calculations.
+This branch adds a lightweight environment system around the existing PtMeOH plant. It does **not** change the process model, process equipment, stream routing, analytics, solver behaviour, or numerical calculations.
 
-## Behaviour
+## Layered environment
 
-`PlantEnvironmentBuilder` still creates the existing lightweight industrial site from Unity primitives. After that, `PtMeOHSiteAssetEnvironment` adds only perimeter/background detail:
+The environment is intentionally split into three levels of detail.
+
+### 1. Immediate process site
+
+`PlantEnvironmentBuilder` remains responsible for the detailed near-site area around the actual process equipment:
+
+- plant slab and equipment pads;
+- service/maintenance roads;
+- safety markings and perimeter fence;
+- pipe racks and utility headers;
+- utility/control zone;
+- storage containment;
+- nearby industrial background structures.
+
+The builder still limits this detailed area to roughly the current 78-118 m site scale so it stays lightweight and readable.
+
+### 2. Close CC0 surroundings
+
+`PtMeOHSiteAssetEnvironment` decorates only the perimeter/background of the detailed plant with:
 
 - two non-process service/maintenance buildings;
 - modular industrial facade and roof details;
@@ -12,15 +30,56 @@ This branch adds a lightweight environment layer around the existing PtMeOH plan
 - road lights and entrance barriers;
 - sparse trees outside the process fence.
 
-All added objects are children of `Generated_Plant_Environment_N/CC0 Site Surroundings`, so rebuilding the environment removes and recreates them cleanly.
+These objects are children of:
+
+`Generated_Plant_Environment_N/CC0 Site Surroundings`
+
+The close CC0 layer can be disabled with `createCc0AssetSurroundings`.
+
+### 3. Extended horizon world
+
+`PtMeOHHorizonEnvironment` fills the world outside the immediate site so an elevated or orbiting camera does not see the edge of the generated plant environment.
+
+It creates:
+
+- a continuous approximately **2400 m x 2400 m** ground plane;
+- a broad industrial-estate transition apron outside the near site;
+- an outer industrial road loop and several longer regional roads;
+- **32** low-cost mid-distance industrial building groups around the full 360 degrees;
+- three distant storage/tank clusters;
+- utility stacks mixed through the mid-distance estate;
+- **56** simplified far industrial silhouettes and periodic chimneys;
+- **52** broad landscape/tree-line belts that fill gaps in the far skyline.
+
+The geometry continues beyond the visible atmospheric range. Linear fog begins at about **270 m** and reaches the background colour by about **1050 m**, while the main camera far clipping distance is raised to at least **1800 m**.
+
+This means the real world geometry boundary is hidden by atmospheric perspective rather than being visible as a hard edge.
+
+The extended layer is parented under:
+
+`Generated_Plant_Environment_N/Extended Horizon Surroundings`
+
+and can be disabled with `createExtendedHorizonSurroundings`.
+
+## Why the far surroundings use simpler geometry
+
+At hundreds of metres from the plant, detailed FBX geometry is not visually useful. The far layers therefore use simplified building, stack and vegetation silhouettes. This preserves the industrial context while keeping the educational process model and animated pipe flows as the visual focus.
+
+The close perimeter uses the imported CC0 assets where their detail is actually visible.
+
+## Camera/background strategy
+
+The project keeps the existing solid blue-grey industrial backdrop instead of reintroducing Unity's procedural sky lower-hemisphere artefact.
+
+The extended horizon matches atmospheric fog to that backdrop colour. Ground, distant buildings and vegetation therefore fade into the same horizon colour before the actual geometry ends.
+
+## Asset provenance
 
 The external FBX assets are placed under:
 
 `Assets/Resources/PtMeOHEnvironment/`
 
-and are loaded with `Resources.Load`. If an asset is missing, the application continues with the original primitive environment.
-
-## Asset provenance
+and are loaded with `Resources.Load`. Missing optional assets fall back cleanly to the primitive near-site environment.
 
 ### ModKit — Modular Building Kit & Prop Pack
 
@@ -70,6 +129,6 @@ License: **CC0 1.0 Universal**.
 
 ## Design intent
 
-These models are decorative site context only. They deliberately sit outside the process layout so that a viewer does not confuse them with modeled PtMeOH process units.
+The surroundings are decorative site context only. They deliberately stay outside the modeled PtMeOH process layout so viewers do not confuse them with process units included in the digital twin.
 
 The application should still be described as an educational process visualization rather than an exact industrial site layout.
