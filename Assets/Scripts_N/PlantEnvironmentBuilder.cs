@@ -120,6 +120,10 @@ public class PlantEnvironmentBuilder : MonoBehaviour
             CreateIndustrialBackground(root.transform, center, siteWidth, siteDepth, baseY);
         }
 
+        // Optional CC0 asset layer. The helper only decorates the perimeter and falls back
+        // cleanly to the primitive environment if an external model is unavailable.
+        PtMeOHSiteAssetEnvironment.Build(root.transform, center, siteWidth, siteDepth, baseY);
+
         CreateSiteSign(root.transform, center, siteWidth, siteDepth, baseY);
         SuppressLargeFloatingPlanes(baseY);
     }
