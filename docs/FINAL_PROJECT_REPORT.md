@@ -1,65 +1,49 @@
 # Power-to-Methanol Digital Twin — Final Technical Report
 
-## 1. Executive summary
+## 1. Project overview
 
-This project is an interactive Unity application that explains the complete
-Power-to-Methanol process through a navigable three-dimensional plant,
-animated material streams, operating controls, live key performance
-indicators, equipment-focused views, and educational process warnings.
+The purpose of this project was to develop an interactive visualization of a
+complete Power-to-Methanol plant in Unity. Instead of using the 3D plant only
+as a static model, the project connects it to a simplified process simulation.
+This makes it possible to change operating parameters and directly see the
+effect on process values, pipe flow, reactor behaviour, warnings and dashboard
+outputs.
 
-The integrated application presents the following process chain:
+The process represented in the application follows the main PtM chain:
 
 1. water treatment and demineralized-water supply;
-2. renewable-electricity water electrolysis and hydrogen production;
-3. CO2 capture using an amine absorption/regeneration representation;
+2. water electrolysis and hydrogen production;
+3. CO2 capture using an amine-based representation;
 4. feed compression and mixing;
-5. catalytic methanol synthesis with steady-state recycle/purge;
-6. cooling, condensation, flash separation, and gas recycle;
-7. distillation/purification; and
+5. catalytic methanol synthesis with recycle and purge;
+6. cooling, condensation and flash separation;
+7. gas recycle and methanol purification; and
 8. methanol storage.
 
-The implementation is intentionally lightweight enough to run on the project
-laptop. The central process state is calculated by a deterministic,
-steady-state educational model. All dashboard values, warning states, flow
-visibility, flow speed, flow density, mixed-stream composition, reactor
-activity, and catalyst color consume the same process snapshot. This shared
-source of truth is the principal digital-twin architecture of the project.
+The application was also designed to run on the development laptop, so the
+simulation and visual effects were kept lightweight. One central process
+snapshot is used by the dashboard, pipe-flow system, warnings, reactor visual
+and catalyst colour. As a result, the different parts of the application react
+to the same process state rather than working as separate animations.
 
-## 2. Scope and claim boundary
+## 2. Project scope
 
-### 2.1 What is implemented
+The final application contains a complete 3D plant scene with the major PtM
+equipment and connecting pipe network. It includes operating controls, process
+values, continuous flow visualization, a reactor cutaway, warnings, analytics,
+camera navigation, water treatment and a lightweight industrial environment.
 
-- A full-plant 3D scene with major PtM equipment and interconnecting pipes.
-- An ICODOS-inspired application shell with module navigation, a stream
-  legend, plant-status KPIs, equipment information, and operating controls.
-- A central process simulator that responds continuously to UI inputs.
-- A fixed-point steady-state recycle/purge mass balance with limiting-reactant
-  handling for the methanol loop.
-- A water-treatment source connected to the electrolyzer.
-- Direction-aware continuous flow visualization for pure, mixed-gas, liquid,
-  and two-phase routes.
-- Multi-species packets in mixed feed, recycle, and reactor-effluent pipes.
-- A transparent reactor shell, contained upflow reaction visualization,
-  operating-state catalyst-bed color, and live reaction hover card.
-- A Daylight-styled dashboard, welcome/tutorial flow, separate analytics
-  window, correlation curves, and mass-balance CSV export.
-- Educational warnings for important operating limits.
-- Windows desktop build and editor-side structural validation tools.
+The process model is intended for education and visualization. It uses
+steady-state mass balances and empirical response functions to show how the
+main operating parameters influence the process. It is not intended to replace
+a CFD model or a rigorous simulator such as Aspen Plus, Aspen HYSYS or DWSIM,
+and it is not connected to real plant or PLC data. The warning limits in the
+application are also used for demonstration and should not be treated as
+certified plant safety limits.
 
-### 2.2 What is not claimed
+This limitation is shown in the application itself as:
 
-The application is not:
-
-- a CFD calculation;
-- a rigorous equation-of-state, phase-equilibrium, or reactor-kinetics model;
-- a validated Aspen Plus, Aspen HYSYS, DWSIM, MATLAB, or Modelica replacement;
-- connected to live PLC, OPC UA, historian, laboratory, or plant data;
-- a dynamic process-control or start-up/shutdown simulator;
-- a quantitative HAZOP, SIL, relief, mechanical-design, or safety system; or
-- certified for design, control, training, or plant operation.
-
-Displayed values are educational estimates. This distinction also appears in
-the dashboard as “EDUCATIONAL VISUALIZATION • SIMPLIFIED PROCESS VALUES.”
+**EDUCATIONAL VISUALIZATION • SIMPLIFIED PROCESS VALUES**
 
 ## 3. Development environment
 
@@ -67,422 +51,330 @@ the dashboard as “EDUCATIONAL VISUALIZATION • SIMPLIFIED PROCESS VALUES.”
 | --- | --- |
 | Engine | Unity `6000.4.7f1` |
 | Rendering | Universal Render Pipeline `17.4.0` |
-| Programming | C# MonoBehaviours and one custom ShaderLab shader |
+| Programming | C# MonoBehaviours and a custom ShaderLab shader |
 | Input | Unity Input System `1.19.0` |
 | UI | Unity uGUI and TextMesh Pro |
 | Platform | Windows desktop |
-| Scene | `Assets/Scenes/SampleScene.unity` |
+| Main scene | `Assets/Scenes/SampleScene.unity` |
 | Version control | Git / GitHub |
 | Submission branch | `submission_final` |
 
-The project contains no first-party assembly-definition files. Runtime scripts
-therefore compile into `Assembly-CSharp`, while scripts in `Assets/Editor`
-compile into the editor assembly.
+Runtime scripts compile into `Assembly-CSharp`, while the scripts under
+`Assets/Editor` compile into the Unity editor assembly.
 
-## 4. Process and chemical basis
+## 4. Process model
 
 ### 4.1 Electrolysis
 
-The electrolyzer converts water and electrical power into hydrogen. Hydrogen
-production is limited by both the selected electrical-load factor and an
-educational water-availability factor. Oxygen is reported from the mass ratio:
+The electrolyzer uses water availability and electrical load to calculate the
+hydrogen production rate. Hydrogen production is therefore limited by both the
+selected power input and the available feed water.
+
+The oxygen by-product is calculated from the water-splitting mass ratio:
 
 `m(O2) = 8 × m(H2)`
 
-The current design reference is 215 kg/h H2 and 1,935 kg/h water at full design
-conditions. The calculation is a mass-balance visualization, not an
-electrochemical cell-voltage or stack-degradation model.
+The design reference used in the project is 215 kg/h H2 and 1,935 kg/h water
+at full design conditions.
 
 ### 4.2 CO2 capture
 
-Flue-gas throughput, amine circulation, regeneration temperature, and steam
-input influence an empirical capture-efficiency function. The implementation
-represents the engineering trends expected from an absorption/regeneration
-system:
+The CO2 capture section uses flue-gas throughput, amine circulation,
+regeneration temperature and steam input. These inputs are combined in an
+empirical capture-efficiency function.
 
-- greater solvent circulation generally increases capture;
-- adequate regeneration temperature and steam improve solvent regeneration;
-- inadequate regeneration reduces capture; and
-- excessive temperature triggers an educational warning.
+The purpose of this part of the model is to reproduce the expected operating
+trend: increasing solvent circulation generally improves capture, while poor
+regeneration conditions reduce it. Very high regeneration temperature also
+triggers a warning.
 
-The model does not calculate column stages, mass-transfer coefficients,
-solvent loading, degradation, corrosion, or rigorous vapor-liquid equilibrium.
+Detailed column stages, solvent degradation, mass-transfer coefficients and
+rigorous vapour-liquid equilibrium are outside the scope of the project.
 
-### 4.3 Compression and feed preparation
+### 4.3 Feed preparation and methanol synthesis
 
-Captured CO2, electrolytic H2, and recycled gas are represented as separate
-species that converge in the synthesis-feed network. Compression ratio is
-exposed as an operating control and the warning system identifies extreme
-values. The mixed-gas visualization retains separate H2, CO2, and recycle
-packets instead of assigning a physically misleading single “mixture color.”
-
-### 4.4 Methanol synthesis
-
-The primary reaction represented is:
+Captured CO2, electrolytic H2 and recycled gas enter the synthesis-feed
+network as separate species. The main reaction represented in the model is:
 
 `CO2 + 3 H2 → CH3OH + H2O`
 
-The corresponding mass basis used by the simulator is:
+The mass basis used by the simulator is:
 
 `6 kg H2 + 44 kg CO2 → 32 kg CH3OH + 18 kg H2O`
 
-The maximum theoretical methanol rate is the smaller of:
+The theoretical methanol production is therefore limited by whichever reactant
+is available in the smaller stoichiometric amount.
 
-- `H2 rate × 32 / 6`; and
-- `CO2 rate × 32 / 44`.
+The displayed reactor yield is the single-pass CO2 conversion. Reactor
+temperature has its best response around 240 °C, while pressure, H2/CO2 ratio
+and GHSV also influence the calculated conversion. The temperature response
+was made asymmetric so that operation below and above the optimum does not
+produce the same behaviour.
 
-The displayed reactor yield is the calculated single-pass CO2 conversion.
-Temperature response peaks at approximately 240 °C and is intentionally
-asymmetric: the heuristic kinetic fall-off below the optimum is gentler than
-the equilibrium-side fall-off above it. Pressure, H2/CO2 ratio, and GHSV also
-modify the single-pass conversion. The recycle/purge loop is then solved to a
-steady-state fixed point with limiting-reactant detection. These relationships
-are educational engineering response curves, not a Langmuir–Hinshelwood
-kinetic model, and they do not resolve reverse water-gas-shift kinetics, heat
-transfer, pressure drop, hot spots, or catalyst deactivation quantitatively.
+After the single-pass conversion is calculated, the unreacted H2 and CO2 are
+sent through a recycle/purge calculation. The solver repeatedly updates the
+recycle stream until the change becomes sufficiently small and a steady value
+is reached. It also checks which reactant is limiting.
 
-The external synthesis-feed network routes material to the reactor, while the
-reactor cutaway visualization starts its contained bubbles in the lower
-cylindrical region, distributes them across the packed-bed cross-section, and
-moves them upward toward the top outlet. A fraction equal to the live
-single-pass conversion changes to product visualization within the bed. This
-is explicitly an explanatory flow representation rather than CFD.
+The detailed equations and default values used in these calculations are
+listed in [IMPLEMENTATION_REFERENCE.md](IMPLEMENTATION_REFERENCE.md).
 
-### 4.5 Condensation, separation, recycle, and purification
+### 4.4 Cooling, separation and purification
 
-Cooling rate and cooling-water temperature determine an empirical condenser
-recovery. Separator temperature is most favorable near the configured
-34 °C reference. Unconverted gas is partly recycled, and its calculated rate
-is returned to the mixed synthesis feed visualization.
+Cooling-water flow and temperature affect the condenser recovery. Separator
+temperature is most favourable near the 34 °C reference used in the model.
 
-Reflux ratio and reboiler temperature affect an educational distillation
-recovery, methanol purity, and energy index. Product water is inferred from
-the reaction mass ratio:
+Part of the unreacted synthesis gas is returned to the reactor feed through the
+recycle loop. The remaining condensed product continues to the purification
+section.
+
+Reflux ratio and reboiler temperature affect the simplified distillation
+recovery and methanol purity. Product water is calculated from the reaction
+mass ratio:
 
 `water rate = methanol rate × 18 / 32`
 
-No rigorous flash, distillation-stage, azeotrope, or activity-coefficient
-calculation is performed.
+These calculations are simplified and are used to connect the operating
+controls with the plant visualization rather than reproduce a full
+thermodynamic separation model.
 
-## 5. Software architecture
+## 5. Application architecture
 
 ### 5.1 Shared process state
 
-`PlantProcessSimulator` is the runtime process authority. It owns the user
-inputs, recalculates a `PlantProcessSnapshot`, and exposes the latest snapshot
-to all presentation systems.
+`PlantProcessSimulator` is the central process component. It receives the
+operating inputs, recalculates the process and stores the latest
+`PlantProcessSnapshot`.
 
 ```text
-UI sliders
+UI controls
     ↓
 PlantProcessSimulator
-    ↓ one process snapshot
-    ├── dashboard KPIs
-    ├── equipment output labels
+    ↓
+PlantProcessSnapshot
+    ├── dashboard values
+    ├── equipment values
     ├── warning states
-    ├── pipe speed/density/composition
-    ├── reactor visual intensity
-    └── catalyst-bed color
+    ├── pipe flow
+    ├── reactor activity
+    └── catalyst colour
 ```
 
-This avoids independent animations displaying contradictory operating states.
+This was important during integration because the visual systems had
+originally been developed as separate parts. Using one process snapshot made
+it possible for a change in a slider to affect both the displayed value and
+the corresponding visualization.
 
-### 5.2 Runtime composition
+### 5.2 Main runtime systems
 
-The application uses a single integrated scene and several focused runtime
-components. Auto-created components find scene equipment by established
-names, attach visualization behavior, and build the dashboard/environment.
-This approach reduced manual scene wiring during integration but creates a
-dependency on stable hierarchy and route names.
-
-### 5.3 Main runtime responsibilities
-
-| System | Responsibility |
+| System | Main role |
 | --- | --- |
-| `PlantProcessSimulator` | Central inputs, process calculation, outputs |
-| `FinalPlantFlowRuntime` | Route discovery, species composition, live flow coupling |
-| `PipeFlowAnimator` | Material-property animation for each pipe segment |
-| `PipeFlow.shader` | Transparent carrier and discrete moving species packets |
-| `LightweightReactorVisual` | Contained low-cost upflow reactor cutaway visualization |
-| `CatalystBedColorAnimator` | Catalyst color from load, conversion, temperature |
-| `IcodosDashboardRuntime` | Header, navigation, legend, status, KPIs, footer |
-| `InteractiveModulePanelRuntime` | Equipment panels, sliders, live values |
-| `SafetyWarningRuntime` | Educational operating-limit warnings |
-| `OrbitCameraController` | Orbit, pan, zoom, overview, module focus |
-| `PlantEnvironmentBuilder` | Lightweight industrial surroundings |
+| `PlantProcessSimulator` | Process inputs, equations and outputs |
+| `RecycleMassBalanceEngine` | H2/CO2 recycle and purge calculation |
+| `FinalPlantFlowRuntime` | Finds pipe routes and connects flow to the process |
+| `PipeFlowAnimator` | Updates flow properties for each pipe segment |
+| `PipeFlow.shader` | Draws the moving stream packets |
+| `LightweightReactorVisual` | Internal reactor flow visualization |
+| `CatalystBedColorAnimator` | Changes catalyst colour with operating state |
+| `IcodosDashboardRuntime` | Main Daylight dashboard |
+| `CorrelationGraphRuntime` | Analytics curves and recorded points |
+| `InteractiveModulePanelRuntime` | Equipment controls and values |
+| `SafetyWarningRuntime` | Educational process warnings |
+| `OrbitCameraController` | Camera movement and equipment focus |
+| `PlantEnvironmentBuilder` | Industrial surroundings |
 
-## 6. Pipe-flow implementation
+The project uses one integrated scene. Several runtime components locate
+equipment using established hierarchy and route names. This reduced the amount
+of manual scene wiring needed during integration, although it also means those
+names should remain stable.
 
-### 6.1 Visual method
+## 6. Pipe-flow visualization
 
-The integrated flow system uses the existing pipe meshes and a custom
-transparent shader. It does not create thousands of pipe particles. Each
-segment receives a `MaterialPropertyBlock` containing:
+The pipe-flow system uses the existing pipe meshes together with a custom
+transparent shader. Earlier approaches considered using many individual
+particles, but this would have been unnecessarily heavy for the complete
+plant.
 
-- flow offset;
-- forward/reverse direction;
-- packet density/tiling;
-- opacity;
-- intensity;
-- liquid/two-phase flags; and
-- up to three species colors and fractions.
+Each pipe segment instead receives a `MaterialPropertyBlock` containing the
+flow direction, speed, density, opacity, intensity and stream colours. This
+allows the complete pipe network to remain active without creating a large
+number of GameObjects.
 
-This is substantially more efficient than individual GameObjects and allows
-all pipe routes to remain visible across the complete plant.
+`FinalPlantFlowRuntime` reads the process state every 0.08 seconds. The
+normalized stream rate is then used to change flow speed, packet density,
+visibility and intensity. Because of this, reducing a process flow also reduces
+the visible activity in the corresponding pipe.
 
-### 6.2 Process coupling
+For mixed streams, H2, CO2 and recycle are kept as separate visual packets
+instead of giving the complete mixture one colour. Their fractions are
+estimated from the available mass-flow values and approximate molecular
+weights.
 
-Every 0.08 seconds, `FinalPlantFlowRuntime` reads the process snapshot.
-Normalized stream rate controls:
+Route direction is defined from the source equipment to the destination
+equipment. Some imported meshes have the opposite internal ordering, so those
+routes use a reverse flag to correct the shader direction. This changes only
+the visualization direction and not the engineering process direction.
 
-- animation speed;
-- packet density;
-- carrier visibility; and
-- packet intensity.
+Curved fittings do not all have identical UV layouts, so packet spacing can
+look slightly different on some bends. This remained as a visual limitation of
+the imported geometry.
 
-A stream becomes effectively invisible at negligible process flow. Therefore,
-moving a process slider changes not only the displayed number but also the
-corresponding visual flow.
+## 7. Reactor and catalyst visualization
 
-### 6.3 Mixed streams
+The reactor shell and caps are semi-transparent so that the internal activity
+and catalyst bed can be seen while keeping the reactor geometry visible.
 
-Mixed-feed fractions use molar estimates:
+Earlier reactor particle versions used a much denser population and caused
+stability problems on the development laptop. Because of this, the final
+version uses a maximum of 150 live bubbles.
 
-- H2 rate divided by 2.016 kg/kmol;
-- CO2 rate divided by 44.01 kg/kmol; and
-- recycle rate divided by an approximate 12.5 kg/kmol effective molecular
-  weight.
+The internal flow begins in the lower cylindrical part of the reactor near the
+feed region, spreads through the catalyst-bed cross-section and moves upward
+towards the top outlet. A fraction based on the live single-pass conversion
+changes to the product visualization inside the catalyst region.
 
-The shader displays these as distinct packets. Fixed illustrative fractions
-are used for recycle and reactor-effluent visual breakdowns where the
-simplified process model does not expose a full species balance.
+The bubble positions are constrained inside the straight cylindrical vessel
+region so that the flow does not extend outside the reactor geometry. This
+effect is used to explain the flow and conversion through the reactor; it is
+not a CFD or molecular simulation.
 
-### 6.4 Direction
+The catalyst bed also changes colour according to the operating state:
 
-Route direction is configured from source equipment toward destination
-equipment. H2 and CO2 routes marked as reversed are reversed relative to their
-imported mesh ordering so that both visually converge at the T-junction.
-Synthesis feed then travels toward the reactor, reactor effluent toward
-cooling/separation, recycle back toward the junction, and liquid product
-toward purification/storage.
+- ochre for idle or low load;
+- green for active operation;
+- orange for high conversion; and
+- red for overtemperature.
 
-Curved fittings use mesh UV/geometry fallbacks. Consequently, packet spacing
-can appear somewhat different from different viewing angles or on meshes with
-inconsistent UVs. This is a visualization limitation, not a change in the
-calculated flow direction.
-
-## 7. Reactor and catalyst implementation
-
-### 7.1 Reactor transparency
-
-The reactor shell and caps are rendered semi-transparently so internal
-activity remains visible without removing the engineering geometry.
-
-### 7.2 Lightweight reaction visual
-
-Earlier dense reactor particle prototypes caused stability problems on the
-development laptop. The final implementation caps the live reactor population
-at 150 bubbles and uses build-preserved reactor materials so the effect remains
-available in the Windows player. It depicts:
-
-1. H2, CO2, and recycle entering the lower reactor visualization region;
-2. distribution across the packed-bed cross-section;
-3. conversion activity through the catalyst region; and
-4. product and remaining gas gathering toward the top outlet.
-
-The effect is an explanatory flow field, not a molecular simulation.
-
-### 7.3 Catalyst-bed color
-
-The catalyst bed is a persistent scene mesh with a dedicated material instance.
-Its color changes between:
-
-- idle/low-load ochre;
-- active green;
-- high-conversion orange; and
-- overtemperature red.
-
-The color is driven by synthesis-feed load, calculated conversion, and reactor
-temperature. It communicates operating state; it is not a literal prediction
-of commercial catalyst color or catalyst surface chemistry.
+The colour is based on load, conversion and reactor temperature.
 
 ## 8. User interface and interaction
 
-### 8.1 Dashboard
+The final interface uses the Daylight design developed during the last stage of
+the project. It contains a floating header, module navigation, process-stream
+legend, plant-status information, efficiency ring, KPIs, bottom dock and
+scrollable module controls.
 
-The final Daylight runtime UI provides:
+A welcome screen and tutorial are shown when the application starts so that
+the main controls can be understood before interacting with the plant.
 
-- a floating header/brand card and pill-style navigation;
-- a process-stream color legend and plant-status presentation;
-- an efficiency ring plus live production/utilization KPIs;
-- module-specific summaries and a bottom dock;
-- scrollable right-hand module-control drawers;
-- a welcome screen and guided tutorial;
-- an independently movable analytics window in the Windows build; and
-- reset/help and equipment-focus actions.
+The available controls include plant throughput, electrolyzer power and water,
+capture conditions, compressor ratio, reactor temperature and pressure,
+H2/CO2 ratio, GHSV, cooling conditions, separator temperature, recycle ratio,
+reflux ratio and reboiler temperature.
 
-The analytics view records numbered operating points, displays constant-condition
-background curves, allows a recorded point to trace its own dotted model curve,
-and can export the mass-balance CSV. The visual direction remains Unity-native
-while following the supplied ICODOS/reference design language.
+All of these controls write back to `PlantProcessSimulator`. This means the
+numerical values and the visual flow are updated from the same calculation.
 
-### 8.2 Interactive controls
+The analytics section opens in a separate movable window in the Windows build.
+Operating points can be recorded and are numbered in the order in which they
+were created. The graph also shows background curves and can trace a model
+curve through a selected recorded point. Mass-balance data can be exported as
+CSV.
 
-Available controls cover:
+## 9. Camera and warnings
 
-- plant throughput;
-- electrolyzer power and water;
-- flue-gas, amine, steam, and regeneration temperature;
-- compressor ratio;
-- reactor temperature, pressure, H2/CO2 ratio, GHSV, and feed;
-- cooling rate and temperature;
-- separator temperature;
-- recycle ratio;
-- reflux ratio and reboiler temperature; and
-- storage/production-related views.
+The camera can orbit the plant, pan laterally, zoom, return to the overview and
+focus on individual process modules. Ground and horizon limits were added
+after testing because unrestricted camera movement could easily place the view
+below the site.
 
-All controls write to `PlantProcessSimulator`, allowing numeric results and
-visual flows to update together.
+The warning system covers conditions such as insufficient electrolyzer water,
+poor capture conditions, unsuitable regeneration settings, extreme compressor
+ratio, low reactor temperature or pressure, unsuitable H2/CO2 ratio, high
+GHSV, reactor overtemperature, poor condenser conditions, abnormal recycle,
+low methanol purity and high storage level.
 
-### 8.3 Camera
+These warnings are intended to help the user understand how operating
+conditions affect the process. They are not plant trip or safety-system
+settings.
 
-Arrow keys orbit the selected focus, A/D translate the camera laterally, W/S
-zoom, Shift+arrow cycles equipment modules, and Home restores the overview.
-The final camera controller constrains orbit/focus motion above the ground and
-keeps the view above the horizon, reducing accidental below-site viewpoints.
+## 10. Plant environment
 
-## 9. Warnings and engineering communication
+The surroundings are created at runtime by
+`PlantEnvironmentBuilder`. They include roads, slab areas, safety markings,
+fencing, pipe racks, utility areas, containment, tank-farm context, service
+frames, control structures and equipment foundations.
 
-The warning overlay covers illustrative cases including:
+A water-treatment area was also added with storage, pumping and
+reverse-osmosis/polishing equipment. This provides the water source for the
+electrolyzer instead of having the electrolyzer appear as an isolated unit.
 
-- insufficient electrolyzer water;
-- low capture or capture-input mismatch;
-- inadequate/excessive regeneration conditions;
-- extreme compressor ratio;
-- low reactor temperature/pressure;
-- H2/CO2 deficiency or excess;
-- excessive GHSV;
-- reactor overtemperature/catalyst-sintering risk;
-- inadequate condenser conditions;
-- abnormal recycle;
-- low methanol purity; and
-- high storage level.
+The equipment models were kept relatively low-poly because maintaining stable
+performance on the development laptop was more important than adding very
+heavy environmental geometry.
 
-These thresholds support teaching and interaction. They must not be interpreted
-as equipment trips, alarms, relief settings, or certified safe operating limits.
+## 11. Validation and final build
 
-## 10. Plant environment and visual design
+The repository contains editor tools for structural release validation,
+mass-balance checks and Windows building.
 
-`PlantEnvironmentBuilder` creates a lightweight industrial context using Unity
-primitives: slab, roads, safety markings, fencing, pipe racks, utility areas,
-containment, tank-farm context, service frames, control structures, and
-equipment plinths. The final scene also includes a demineralized-water source
-with storage, pump, reverse-osmosis/polishing equipment and a water line to the
-electrolyzer. The site apron extends beneath the background equipment row.
+During the final development cycle on September 25, a fresh Windows build was
+created after the reactor build fix, water-treatment integration, graph and
+label changes, camera constraints and final interface fixes. The completed
+project state was then transferred into the `submission_final` branch.
 
-The equipment models remain relatively low-poly to maintain laptop
-performance. The dashboard, stream visualization, transparency, close-up
-views, and animated process state provide the primary visual sophistication.
+The release validator checks the main scene, missing script references,
+required pipe-route segments, catalyst and reactor renderers, the
+`Custom/PipeFlow` shader and the main camera setup.
 
-## 11. Validation and build status
+The project was tested as a Windows build and the final development cycle also
+included runtime validation. The editor-side validation is useful for catching
+structural problems, but it does not replace testing every possible operating
+condition or camera angle.
 
-### 11.1 Confirmed evidence
+The process results have also not been calibrated against an external rigorous
+process simulator or real plant data.
 
-The project includes editor-side release validation, numerical recycle
-mass-balance validation, mass-balance CSV validation, and a strict Windows build
-entry point. During the final September 25 development cycle, a fresh Windows
-build was produced in `Builds/Daylight/` after the final reactor-build fix,
-water-treatment integration, graph-curve/label work, and camera constraints;
-the completed commits were then pushed to `chaitanya-dev` and transferred
-unchanged into the submission project.
+## 12. Performance decisions and remaining limitations
 
-The structural validator checks:
+Several implementation decisions were made mainly because the full plant,
+dashboard and visual effects needed to run together on the same machine.
 
-- the startup scene;
-- missing script references;
-- required route-prefix segment counts;
-- catalyst and reactor-shell renderers;
-- the `Custom/PipeFlow` shader;
-- orbit-camera presence; and
-- positive lateral pan speed.
+- Pipe flow is shader-based instead of creating one object for every packet.
+- `MaterialPropertyBlock` is used so that pipe properties can change without
+  unnecessary material duplication.
+- Reactor bubbles are capped at 150 after the denser prototype caused
+  instability.
+- The industrial environment is built from lightweight reusable primitives.
+- Process and flow updates are not recalculated on every rendered frame.
 
-### 11.2 Validation limitations
+Some older controllers and waypoint prototypes are still present in the
+project. Runtime object discovery also depends partly on hierarchy and route
+names, and the different imported pipe meshes do not all have consistent UVs.
 
-- The project uses editor validation utilities rather than a comprehensive
-  first-party EditMode/PlayMode regression suite.
-- Structural validation does not prove every camera angle or operating
-  combination is visually perfect.
-- Chemical results have not been calibrated against a rigorous external
-  process simulator or experimental plant data.
+The process model remains steady-state and empirical. It does not include
+transport delay, controller dynamics or live data. The UI is also generated
+mainly at runtime, which makes some layout changes less direct than they would
+be with a fully prefab-based interface.
 
-## 12. Performance and optimization decisions
+## 13. Future improvements
 
-- Pipe flow is shader-driven instead of using one object per packet.
-- Runtime properties use `MaterialPropertyBlock` to avoid unnecessary material
-  duplication.
-- Reactor bubbles are deliberately capped at 150 after instability in denser
-  earlier implementations.
-- The environment uses reusable procedural primitives.
-- Process updates are throttled rather than recalculated for every rendered
-  frame.
-- The project uses one primary scene and a shared process snapshot.
+If the project is continued, the first useful improvement would be to compare
+the nominal process results with a documented Aspen, DWSIM or literature case.
+This would provide an external reference for the simplified calculations.
 
-Remaining opportunities include consolidating legacy scripts, adding assembly
-definitions, profiling draw calls and transparency overdraw, pooling any
-future GameObject particles, and adding automated tests.
+The process model could also be supported by more automated calculation tests,
+especially for stoichiometry, mass-balance closure and expected parameter
+trends.
 
-## 13. Known limitations and technical debt
+On the software side, older unused controllers could be removed, core runtime
+systems could be separated into assembly definitions and more of the UI could
+be converted to reusable prefabs. Additional PlayMode tests could then cover
+the controls, warnings, camera and stream directions.
 
-1. Several older controllers and waypoint prototypes remain compiled alongside
-   the integrated systems.
-2. Runtime object discovery relies partly on hierarchy names and route prefixes.
-3. Different source meshes have inconsistent UVs, affecting curved-pipe packet
-   appearance.
-4. The model is steady-state and empirical, with no transport delay or
-   controller dynamics.
-5. The reaction visual is explanatory, not spatially predictive.
-6. The UI is generated at runtime, which makes some layout editing less direct
-   than a fully prefab-based UI.
-7. No live data connector or persistence layer is implemented.
-8. No comprehensive automated regression suite is present.
+## 14. Conclusion
 
-## 14. Recommended next work
+The final result is an interactive Power-to-Methanol plant visualization in
+which the process model and the 3D scene work together. The project started
+from separate plant, reactor, UI and flow components, and the main development
+work was to integrate these parts into one application.
 
-### Priority 1 — final presentation
+The shared process state makes it possible for operating changes to affect the
+dashboard values, pipe flow, reactor activity, catalyst state and warnings at
+the same time. This helps demonstrate the relationship between the different
+parts of the PtM process rather than showing only a static plant model.
 
-- Capture a clean 1080p walkthrough of Overview and each module.
-- Demonstrate at least three sliders and show synchronized numeric, warning,
-  catalyst, flow-speed, and flow-density changes.
-- Explain the educational model boundary before presenting values.
-- Use close-ups to show separate packets in the mixed feed and upflow through
-  the reactor.
-
-### Priority 2 — academic defensibility
-
-- Compare nominal outputs against a documented Aspen/DWSIM/literature case.
-- Cite reaction, capture, separation, and operating-range sources.
-- Add a table of input ranges, units, nominal values, and sensitivity.
-- Add automated calculation tests for stoichiometry and monotonic trends.
-
-### Priority 3 — software quality
-
-- Remove or archive superseded controllers.
-- Add first-party assembly definitions.
-- Convert core runtime-generated UI to reusable prefabs where useful.
-- Add EditMode tests for the process model and PlayMode smoke tests for the
-  scene, controls, warnings, camera, and stream directions.
-
-## 15. Conclusion
-
-The current application is a complete interactive educational PtM digital-twin
-demonstrator rather than a static 3D model. Its strongest engineering feature
-is the coupling of one process snapshot to all visual and numeric outputs.
-Its strongest communication feature is the ability to move from a whole-plant
-overview to equipment-level inspection while stream composition and operating
-state remain visible.
-
-The project is suitable for demonstrating process integration, operating
-relationships, material-flow direction, reaction stoichiometry, recycle, and
-the effect of operating controls at master's-project presentation level,
-provided that its simplified-model boundary is stated clearly.
-
+The application can therefore be used to present the overall process,
+material-flow direction, reaction stoichiometry, recycle behaviour and the
+effect of the main operating parameters, while keeping the simplified nature
+of the process model clear.
