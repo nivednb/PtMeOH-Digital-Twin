@@ -5,6 +5,11 @@ progress of the project can be seen without opening Unity. Some of these images
 show earlier stages of the project and are therefore not identical to the
 final submission build.
 
+For the current Windows-build visuals, see the
+[final submission screenshot gallery](final-screenshots.md), which contains
+curated frames and source-video timestamps from the 25 September 2026 final
+recordings.
+
 ## Full-plant development
 
 The full-plant scene was built by integrating the main PtM equipment, pipe
@@ -56,5 +61,6 @@ Daylight dashboard, analytics, warnings, improved camera controls, the welcome
 screen/tutorial and the final reactor visualization.
 
 For the current project state, see the
-[final project report](FINAL_PROJECT_REPORT.md) and run the
+[final screenshot gallery](final-screenshots.md), the
+[final project report](FINAL_PROJECT_REPORT.md), and the
 `submission_final` branch.
